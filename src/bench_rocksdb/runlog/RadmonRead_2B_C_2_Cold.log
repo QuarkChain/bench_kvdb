@@ -1,0 +1,78 @@
+Threads: 64
+Total data: 2000000000 while needInit=0 and batchInsert=0
+Ops: 0 write ops and 10000000 read ops
+Random read: 10000000 ops in 17842.9 ms (560446 ops/s)
+BlockCacheHit: 0
+BlockCacheMiss: 10000000
+BytesRead (MB): 1049.04 MB
+GetHits: 10000000
+  L0 GetHits: 0
+  L1 GetHits: 0
+  L2 ~ GetHits: 10000000
+-------------------------------------
+
+** Compaction Stats [default] **
+Level    Files   Size     Score Read(GB)  Rn(GB) Rnp1(GB) Write(GB) WPreComp(GB) Wnew(GB) Moved(GB) W-Amp Rd(MB/s) Wr(MB/s) Comp(sec) CompMergeCPU(sec) Comp(cnt) Avg(sec) KeyIn KeyDrop Rblob(GB) Wblob(GB)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  L6   9236/0    281.77 GB   0.0      0.0     0.0      0.0       0.0       0.0      0.0       0.0   0.0      0.0      0.0      0.00              0.00         0    0.000       0      0       0.0       0.0
+ Sum   9236/0    281.77 GB   0.0      0.0     0.0      0.0       0.0       0.0      0.0       0.0   0.0      0.0      0.0      0.00              0.00         0    0.000       0      0       0.0       0.0
+ Int      0/0      0.00 KB   0.0      0.0     0.0      0.0       0.0       0.0      0.0       0.0   0.0      0.0      0.0      0.00              0.00         0    0.000       0      0       0.0       0.0
+
+** Compaction Stats [default] **
+Priority    Files   Size     Score Read(GB)  Rn(GB) Rnp1(GB) Write(GB) WPreComp(GB) Wnew(GB) Moved(GB) W-Amp Rd(MB/s) Wr(MB/s) Comp(sec) CompMergeCPU(sec) Comp(cnt) Avg(sec) KeyIn KeyDrop Rblob(GB) Wblob(GB)
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Blob file count: 0, total size: 0.0 GB, garbage size: 0.0 GB, space amp: 0.0
+
+Uptime(secs): 17.9 total, 17.9 interval
+Flush(GB): cumulative 0.000, interval 0.000
+AddFile(GB): cumulative 0.000, interval 0.000
+AddFile(Total Files): cumulative 0, interval 0
+AddFile(L0 Files): cumulative 0, interval 0
+AddFile(Keys): cumulative 0, interval 0
+Cumulative compaction: 0.00 GB write, 0.00 MB/s write, 0.00 GB read, 0.00 MB/s read, 0.0 seconds
+Interval compaction: 0.00 GB write, 0.00 MB/s write, 0.00 GB read, 0.00 MB/s read, 0.0 seconds
+Estimated pending compaction bytes: 0
+Write Stall (count): cf-l0-file-count-limit-delays-with-ongoing-compaction: 0, cf-l0-file-count-limit-stops-with-ongoing-compaction: 0, l0-file-count-limit-delays: 0, l0-file-count-limit-stops: 0, memtable-limit-delays: 0, memtable-limit-stops: 0, pending-compaction-bytes-delays: 0, pending-compaction-bytes-stops: 0, total-delays: 0, total-stops: 0
+
+** File Read Latency Histogram By Level [default] **
+** Level 6 read latency histogram (micros):
+Count: 9658354 Average: 95.4861  StdDev: 58.97
+Min: 0  Median: 94.8910  Max: 7414
+Percentiles: P50: 94.89 P75: 106.13 P99: 160.92 P99.9: 163.90 P99.99: 164.20
+------------------------------------------------------
+[       0,       1 ]    12515   0.130%   0.130% 
+(       1,       2 ]    49432   0.512%   0.641% 
+(       2,       3 ]   359598   3.723%   4.365% #
+(       3,       4 ]   251869   2.608%   6.972% #
+(       4,       6 ]    14762   0.153%   7.125% 
+(       6,      10 ]    25463   0.264%   7.389% 
+(      10,      15 ]     4573   0.047%   7.436% 
+(      15,      22 ]      419   0.004%   7.441% 
+(      22,      34 ]       86   0.001%   7.441% 
+(      34,      51 ]       35   0.000%   7.442% 
+(      51,      76 ]    50645   0.524%   7.966% 
+(      76,     110 ]  7306774  75.652%  83.619% ###############
+(     110,     170 ]  1750514  18.124% 101.743% ####
+(     170,     250 ]   103792   1.075% 102.817% 
+(     250,     380 ]     3668   0.038% 102.855% 
+(     380,     580 ]      789   0.008% 102.864% 
+(     580,     870 ]      715   0.007% 102.871% 
+(     870,    1300 ]     1668   0.017% 102.888% 
+(    1300,    1900 ]     4240   0.044% 102.932% 
+(    1900,    2900 ]     2189   0.023% 102.955% 
+(    2900,    4400 ]      159   0.002% 102.957% 
+(    4400,    6600 ]       22   0.000% 102.957% 
+(    6600,    9900 ]        3   0.000% 102.957% 
+
+
+** DB Stats **
+Uptime(secs): 17.9 total, 17.9 interval
+Cumulative writes: 0 writes, 0 keys, 0 commit groups, 0.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 0 writes, 0 keys, 0 commit groups, 0.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+
