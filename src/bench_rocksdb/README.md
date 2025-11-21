@@ -35,7 +35,7 @@ mkdir -p ./data
 ### Sample run 200M keys with force compact
 ```bash
 mkdir -p ./data
-./bench_rocksdb -l 2 -T 200000000 -n true -b true -w 0 -r 0 -c > runlog/Write_200M_C.log
+./bench_rocksdb -l 2 -T 200000000 -n true -b true -w 0 -r 0 -c true > runlog/Write_200M_C.log
 sleep 10
 ./bench_rocksdb -T 200000000 -w 0 -l 2 -t 64 > runlog/RadmonRead_200M_C_1_Hot.log
 sleep 10
