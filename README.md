@@ -78,6 +78,7 @@ Random-read benchmark using 10M random keys:
 ---------------+------------+--------------
    200M Keys   |   22 GB    |    1.01
    2B Keys     |  226 GB    |    1.92
+   20B Keys    |  2.2 TB    |    2.5   
 ```
 After full compaction (Compact()):
 ```
@@ -85,5 +86,6 @@ After full compaction (Compact()):
 ---------------+-------------+--------------
    200M Keys   |    22 GB    |     1
    2B Keys     |   218 GB    |     1.72
+   20B Keys    |   2.2 TB    |     1
 ```
 Logs: [`src/bench_pebble/runlog/`](https://github.com/QuarkChain/bench_kvdb/src/bench_pebble/runlog/)

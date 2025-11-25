@@ -77,13 +77,18 @@ func randomWrite(tid, count, start, end int64, db *pebble.DB, wg *sync.WaitGroup
 	}
 }
 
-func randomRead(tid int64, keys [][]byte, db *pebble.DB, wg *sync.WaitGroup) {
+func randomRead(tid int64, per, total int64, db *pebble.DB, wg *sync.WaitGroup) {
 	defer wg.Done()
 	st := time.Now()
-	i := int64(0)
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	sha := crypto.NewKeccakState()
 
-	for _, key := range keys {
-		v, _, e := db.Get(key)
+	for i := int64(0); i < per; i++ {
+		rv := r.Int63n(total)
+		key := make([]byte, keyLen)
+		binary.BigEndian.PutUint64(key[keyLen-8:keyLen], uint64(rv))
+		k := hash(sha, key)
+		v, _, e := db.Get(k)
 		if *logLevel >= 3 && i%1000000 == 0 && i > 0 {
 			fmt.Printf("value for key %v is %v with error %v\n", common.Bytes2Hex(key), v, e)
 			ms := time.Since(st).Milliseconds()
@@ -93,7 +98,7 @@ func randomRead(tid int64, keys [][]byte, db *pebble.DB, wg *sync.WaitGroup) {
 	}
 	if *logLevel >= 3 {
 		tu := time.Since(st).Seconds()
-		fmt.Printf("thread %d random read done %.2fs, %.2f ops/s\n", tid, tu, float64(len(keys))/tu)
+		fmt.Printf("thread %d random read done %.2fs, %.2f ops/s\n", tid, tu, float64(per)/tu)
 	}
 }
 
@@ -319,30 +324,13 @@ func main() {
 	}
 
 	if readCount > 0 {
-		r := rand.New(rand.NewSource(time.Now().UnixNano()))
-		thread_keys := make([][][]byte, threads)
 		per := readCount / threads
-
-		for i := int64(0); i < threads; i++ {
-			keys := make([][]byte, per)
-			sha := crypto.NewKeccakState()
-			for j := int64(0); j < per; j++ {
-				rv := r.Int63n(total)
-				key := make([]byte, keyLen)
-				binary.BigEndian.PutUint64(key[keyLen-8:keyLen], uint64(rv))
-				k := hash(sha, key)
-				keys[j] = k
-			}
-			thread_keys[i] = keys
-		}
-
 		m1 := db.Metrics()
 		start := time.Now()
 		for tid := int64(0); tid < threads; tid++ {
 			wg.Add(1)
 			id := tid
-			keys := thread_keys[id]
-			go randomRead(id, keys, db, &wg)
+			go randomRead(id, per, total, db, &wg)
 		}
 		wg.Wait()
 		ms := float64(time.Since(start).Milliseconds())
