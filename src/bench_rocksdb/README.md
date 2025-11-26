@@ -15,6 +15,33 @@ g++ -std=c++20 main.cpp -o bench_rocksdb     -I/usr/local/include -I/usr/local/o
 mkdir -p ./data
 ```
 
+**Note: **
+  - RocksDB version should be larger than 10.x.x
+  - You can use Dockerfile to build a clean docker with RocksDB with 10.7.5 to run this bench
+  - You can run command using `monitor.sh` like `./monitor.sh ./bench_rocksdb -T 200000000 -w 0 -l 2 -t 64` to show the io read/write from os
+```
+# Sample 
+
+rchar: 49515807199
+wchar: 1075344843
+syscr: 12130719 
+syscw: 1124
+read_bytes: 237568
+write_bytes: 1075433472
+cancelled_write_bytes: 0
+----------------------------------
+```
+
+| Field | Value | Meaning |
+|-------|-------|---------|
+| `rchar` | **44,390,007,322 bytes (~44.4 GB)** | Total bytes the process requested to read via system calls. Includes reads served from the page cache, not only physical disk I/O. |
+| `wchar` | **1,282,566 bytes (~1.22 MB)** | Total bytes written through write system calls. Not necessarily persisted to disk (may be buffered). |
+| `syscr` | **10,046,363 calls** | Number of read system calls (`read()`, `pread()`, etc.). Indicates many small reads or repeated random access patterns. |
+| `syscw` | **69 calls** | Number of write system calls — extremely low, meaning writes are heavily buffered, batched, or minimal. |
+| `read_bytes` | **50,904,911,872 bytes (~50.9 GB)** | Actual physical bytes read from storage hardware (not from cache). Represents real disk I/O cost. |
+| `write_bytes` | **1,294,336 bytes (~1.23 MB)** | Actual bytes written to storage. Very small, implying mostly read-heavy or append-only workload. |
+| `cancelled_write_bytes` | **0** | No cancelled kernel write operations. |
+
 
 ### Sample run
 ```bash

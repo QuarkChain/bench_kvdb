@@ -1,10 +1,12 @@
 // main.cpp
+#include <rocksdb/version.h>
 #include <rocksdb/db.h>
 #include <rocksdb/options.h>
 #include <rocksdb/write_batch.h>
 #include <rocksdb/statistics.h>
 #include <rocksdb/cache.h>
 #include <rocksdb/table.h>
+#include <rocksdb/filter_policy.h>
 
 #include <openssl/sha.h>
 #include <iostream>
@@ -196,6 +198,11 @@ void randomRead(int tid, long long count, long long start, long long end, rocksd
 }
 
 int main(int argc, char** argv) {
+    std::cout << "RocksDB Version: "
+              << ROCKSDB_MAJOR << "."
+              << ROCKSDB_MINOR << "."
+              << ROCKSDB_PATCH
+              << std::endl;
     Args args;
 
     int opt;
@@ -220,6 +227,7 @@ int main(int argc, char** argv) {
     rocksdb::Options options;
     options.create_if_missing = true;
     options.IncreaseParallelism(); // use background threads
+//    options.compression = rocksdb::kLZ4Compression;   
     options.compression = rocksdb::kNoCompression;
     options.compaction_style = rocksdb::kCompactionStyleLevel; // optional, depends on use-case
     options.max_open_files = 100000;
@@ -233,7 +241,8 @@ int main(int argc, char** argv) {
 
     // block cache
     rocksdb::BlockBasedTableOptions table_options;
-    table_options.block_cache = rocksdb::NewLRUCache(256 << 20); // 128MB cache
+    table_options.block_cache = rocksdb::NewLRUCache(256 << 20); 
+    table_options.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10));
     options.table_factory.reset(rocksdb::NewBlockBasedTableFactory(table_options));
 
     rocksdb::DB* db = nullptr;
@@ -314,6 +323,50 @@ int main(int argc, char** argv) {
     std::cout << "  L1 GetHits: " << st->getTickerCount(rocksdb::GET_HIT_L1) << "\n";
     std::cout << "  L2 ~ GetHits: " << st->getTickerCount(rocksdb::GET_HIT_L2_AND_UP) << "\n";
     std::cout << "-------------------------------------\n";
+
+    // 定义 TablePropertiesCollection
+    rocksdb::TablePropertiesCollection props;
+    
+    // 获取所有 SSTable 的属性
+    rocksdb::Status s = db->GetPropertiesOfAllTables(&props);
+    if (!s.ok()) {
+        std::cerr << "GetPropertiesOfAllTables failed: " << s.ToString() << std::endl;
+        return 1;
+    }
+
+    uint64_t total_num_files = 0;
+    uint64_t total_num_entries = 0;
+    uint64_t total_raw_key_size = 0;
+    uint64_t total_raw_value_size = 0;
+    uint64_t total_num_data_blocks = 0;
+    uint64_t total_data_block_size = 0;
+    uint64_t total_index_block_size = 0;
+    uint64_t total_filter_block_size = 0;
+
+    // 遍历输出每个 SSTable 的索引/过滤器大小
+    for (auto& kv : props) {
+        auto table_prop = kv.second;
+
+        total_num_files += 1;
+        total_num_entries += table_prop->num_entries;
+        total_raw_key_size += table_prop->raw_key_size;
+        total_raw_value_size += table_prop->raw_value_size;
+        total_num_data_blocks += table_prop->num_data_blocks;
+        total_data_block_size += table_prop->data_size;
+        total_index_block_size += table_prop->index_size;
+        total_filter_block_size += table_prop->filter_size;
+    }
+
+    std::cout << "SSTable Total State: \n";
+    std::cout << "  Total Num Files: " << total_num_files << "\n";
+    std::cout << "  Total Num Entries: " << total_num_entries << "\n";
+    std::cout << "  Total Raw Key Size: " << total_raw_key_size << "\n";
+    std::cout << "  Total Raw Value Size: " << total_raw_value_size << "\n";
+    std::cout << "  Total Index Size: " << total_index_block_size << "\n";
+    std::cout << "  Total Filter Size: " << total_filter_block_size << "\n";
+    std::cout << "  Total Num Data: " << total_num_data_blocks  << "\n";
+    std::cout << "  Total Data Size: " << total_data_block_size  << "\n";
+    std::cout << "---------------------------\n";
 
     std::string stats;
     if (db->GetProperty("rocksdb.stats", &stats)) {
