@@ -39,37 +39,38 @@ This repository exists to **empirically measure** that.
 
 ```bash
 git clone https://github.com/QuarkChain/bench_kvdb
-cd bench_kvdb/scripts
-./build.sh
+cd bench_kvdb/src/bench_pebble
+go build
 ```
 
 ### How to Run
 
-See the README.md under `bench_pebble` and `bench_rocksdb` folder.
+**Usage：**
+- --ni：init insert data
+- --bi: batch insert
+- --fc: force compact after init insert data
+- --T：total number of keys count
+- --t: threads
+- --w：random write count
+- --r：random read count
+- --p：db path[README.md](README.md)
+- --l：log level
+
+
+### Sample run 2B keys
+```bash
+mkdir -p ./data
+./bench_pebble --ni --T 2000000000 --w 0 --r 0 --l 2 > runlog/Write_2B.log
+sleep 10
+./bench_pebble --T 2000000000 --w 0 --l 2 --t 64 > runlog/RadmonRead_2B_1_Hot.log
+sleep 10
+echo 3 | sudo tee /proc/sys/vm/drop_caches
+./bench_pebble --T 2000000000 --w 0 --l 2 --t 64 > runlog/RadmonRead_2B_2_Cold.log
+sleep 10
+./bench_pebble --T 2000000000 --w 0 --l 2 --t 64 > runlog/RadmonRead_2B_3_hot.log
+```
 
 ## Benchmark Results
-
-### RocksDB — IO per Random Read
-
-Random-read benchmark using **10M random keys**:
-```
- Data Count    |   Size(MB)   |   IO per Key 
----------------+--------------+---------------
-   200M Keys   |    28.25     |   19 ~ 21
-   2B Keys     |   281.85 GB  |    2.6
-   20B Keys    |    2.74 TB   |    4.0
-```
-The high IO count for the 200M dataset is caused by data still residing in L0 (not compacted).
-
-After full compaction (CompactRange):
-```
- Data Count    |   Size(MB)   |  IO per Key 
----------------+--------------+--------------
-   200M Keys   |    28.22     |     1
-   2B Keys     |   281.77 GB  |     1
-   20B Keys    |    2.74 TB   |     1
-```
-Logs: [`src/bench_rocksdb/runlog/`](https://github.com/QuarkChain/bench_kvdb/src/bench_rocksdb/runlog/)
 
 ### PebbleDB — IO per Random Read
 Random-read benchmark using 10M random keys:
@@ -80,12 +81,5 @@ Random-read benchmark using 10M random keys:
    2B Keys     |  226 GB    |    1.92
    20B Keys    |  2.2 TB    |    2.5   
 ```
-After full compaction (Compact()):
-```
- Data Count    |   Size(MB)  |  IO per Key 
----------------+-------------+--------------
-   200M Keys   |    22 GB    |     1
-   2B Keys     |   218 GB    |     1.72
-   20B Keys    |   2.2 TB    |     1
-```
+
 Logs: [`src/bench_pebble/runlog/`](https://github.com/QuarkChain/bench_kvdb/src/bench_pebble/runlog/)

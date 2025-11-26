@@ -342,8 +342,12 @@ func main() {
 		tableMiss := m2.TableCache.Misses - m1.TableCache.Misses
 
 		fmt.Printf("ReadAmp Count: %d\n", amp)
-		fmt.Printf("BlockCache miss Count: %d\n", blockMiss)
-		fmt.Printf("TableCache miss Count: %d\n", tableMiss)
+		fmt.Printf("Miss Count: %d\n", m2.Filter.Misses-m1.Filter.Misses)
+		fmt.Printf("Hit Count: %d\n", m2.Filter.Hits-m1.Filter.Hits)
+		fmt.Printf("BlockCache Miss Count: %d\n", m2.BlockCache.Misses-m1.BlockCache.Misses)
+		fmt.Printf("BlockCache Hit Count: %d\n", m2.BlockCache.Hits-m1.BlockCache.Hits)
+		fmt.Printf("TableCache Miss Count: %d\n", m2.TableCache.Misses-m1.TableCache.Misses)
+		fmt.Printf("TableCache Hit Count: %d\n", m2.TableCache.Hits-m1.TableCache.Hits)
 		fmt.Printf("Avg I/O per Get ≈ %.4f\n",
 			float64(blockMiss+tableMiss)/float64(readCount))
 
