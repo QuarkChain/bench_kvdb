@@ -46,21 +46,21 @@ go build
 ### How to Run
 
 **Usage：**
-- --ni：init insert data
-- --bi: batch insert
-- --fc: force compact after init insert data
+- --i：init insert data, default value is `false`
+- --b: batch insert, default value is `true`
+- --c: cache size in MB
 - --T：total number of keys count
-- --t: threads
+- --t: threads count
 - --w：random write count
 - --r：random read count
-- --p：db path[README.md](README.md)
+- --p：db path
 - --l：log level
 
 
 ### Sample run 2B keys
 ```bash
 mkdir -p ./data
-./bench_pebble --ni --T 2000000000 --w 0 --r 0 --l 2 > runlog/Write_2B.log
+./bench_pebble --i --T 2000000000 --w 0 --r 0 --l 2 > runlog/Write_2B.log
 sleep 10
 ./bench_pebble --T 2000000000 --w 0 --l 2 --t 64 > runlog/RadmonRead_2B_1_Hot.log
 sleep 10

@@ -31,12 +31,12 @@ const (
 )
 
 var (
-	ni       = flag.Bool("ni", false, "Need to insert kvs before test, default false")
+	ni       = flag.Bool("i", false, "Need to insert kvs before test, default false")
 	tc       = flag.Int64("T", 2000000000, "Number of kvs to insert before test, default value is 4_000_000_000")
 	wc       = flag.Int64("w", 10000000, "Number of write count during the test")
 	rc       = flag.Int64("r", 10000000, "Number of read count during the test")
-	bi       = flag.Bool("bi", true, "Enable batch insert or not")
-	fc       = flag.Bool("fc", false, "Force compact or not")
+	bi       = flag.Bool("b", true, "Enable batch insert or not")
+	c        = flag.Int("c", 512, "Cache size in MB")
 	t        = flag.Int64("t", 32, "Number of threads")
 	dbPath   = flag.String("p", "./data/bench_pebble", "Data directory for the databases")
 	logLevel = flag.Int64("l", 3, "Log level")
@@ -154,24 +154,9 @@ func seqWrite(tid, count int64, db *pebble.DB, wg *sync.WaitGroup) {
 	}
 }
 
-func seqRead(tid, count int64, db *pebble.DB, wg *sync.WaitGroup) {
-	defer wg.Done()
-	st := time.Now()
-	key := make([]byte, keyLen)
-	for i := int64(0); i < count; i++ {
-		binary.BigEndian.PutUint64(key[keyLen-8:keyLen], uint64(tid*count+i))
-		_, _, _ = db.Get(key)
-		if *logLevel >= 3 && i%1000000 == 0 && i > 0 {
-			ms := time.Since(st).Microseconds()
-			fmt.Printf("thread %d used time %d ms, hps %d\n", tid, ms, i*1000/ms)
-		}
-	}
-	if *logLevel >= 3 {
-		tu := time.Since(st).Seconds()
-		fmt.Printf("thread %d seq read done %.2fs, %.2f ops/s\n", tid, tu, float64(count)/tu)
-	}
-}
-
+// Copied from geth implementation:
+// https://github.com/ethereum/go-ethereum/blob/master/ethdb/pebble/pebble.go#L180
+// Ensures identical behavior with the official geth codebase.
 func NewDB(file string, cache int, handles int, namespace string, readonly bool) (*pebble.DB, error) {
 	// Ensure we have some minimal caching and file guarantees
 	if cache < minCache {
@@ -266,7 +251,7 @@ func NewDB(file string, cache int, handles int, namespace string, readonly bool)
 func main() {
 	flag.Parse()
 
-	db, err := NewDB(*dbPath, 512, 100000, "bench_pebble", false)
+	db, err := NewDB(*dbPath, *c, 100000, "bench_pebble", false)
 
 	if err != nil {
 		log.Crit("New dashboard fail", "err", err)
@@ -301,12 +286,6 @@ func main() {
 		ms := float64(time.Since(start).Milliseconds())
 		fmt.Printf("Init write: %d ops in %.2f ms (%.2f ops/s)\n", total, ms, float64(total)*1000/ms)
 		fmt.Printf("DB State \n%s", db.Metrics().String())
-	}
-
-	if *fc {
-		if err = db.Compact([]byte{}, []byte{0xff, 0xff, 0xff, 0xff}, true); err != nil {
-			panic(err)
-		}
 	}
 
 	if writeCount > 0 {
