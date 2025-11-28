@@ -122,22 +122,34 @@ go build
 
 
 ```bash
+cd ./src/bench_pebble
 
-mkdir -p ./data
+# init DB 
+./run_insert.sh
 
+# get db properties
+./run_properties.sh
 
+# run bench
+./run_bench.sh
 ```
 
 ## Benchmark Results
 
-### PebbleDB — IO per Random Read
-Random-read benchmark using 10M random keys:
-```
- Data Count    |  Size(MB)  |  IO per Key 
----------------+------------+--------------
-   200M Keys   |   22 GB    |    1.01
-   2B Keys     |  226 GB    |    1.92
-   20B Keys    |  2.2 TB    |    2.5   
-```
+### Environment
+- CPU: 32 cores
+- Memory: 128 GB
+- Disk: SAMSUNG MZQL23T8HCLS-00A07 + RAID 0
+- OS: Ubuntu
 
-Logs: [`src/bench_pebble/runlog/`](https://github.com/QuarkChain/bench_kvdb/src/bench_pebble/runlog/)
+### IO per Key
+Random-read benchmark using 10M random keys:
+
+| Data Count   | DB Size | Filter Size | Index Size | IO per Key (16M) | IO per Key (512M) | IO per Key (large) |
+|--------------|---------|-------------|------------|------------------|-------------------|--------------------|
+| 200M Keys    | 22 GB   | 238 MB      | 176 MB     | 1.93             | 0.51              | 0.44 (5.12GB)      |
+| 2B Keys      | 226 GB  | 2.3 GB      | 1.7 GB     | 3.23             | 0.97              | 0.57 (5.12GB)      |
+| 20B Keys     | 2.2 TB  | 23 GB       | 18 GB      | 4.32             | 2.57              | 0.84 (51.2GB)      |
+
+
+Logs: [`src/bench_pebble/runlog/`](https://github.com/QuarkChain/bench_kvdb/src/bench_pebble/logs/)
