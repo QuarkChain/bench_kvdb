@@ -304,7 +304,6 @@ func main() {
 
 	if readCount > 0 {
 		per := readCount / threads
-		m1 := db.Metrics()
 		start := time.Now()
 		for tid := int64(0); tid < threads; tid++ {
 			wg.Add(1)
@@ -314,26 +313,17 @@ func main() {
 		wg.Wait()
 		ms := float64(time.Since(start).Milliseconds())
 		fmt.Printf("Random read: %d ops in %.2f ms (%.2f ops/s)\n", readCount, ms, float64(readCount)*1000/ms)
-		m2 := db.Metrics()
+		m := db.Metrics()
 
-		amp := m2.ReadAmp()
-		blockMiss := m2.BlockCache.Misses - m1.BlockCache.Misses
-		tableMiss := m2.TableCache.Misses - m1.TableCache.Misses
+		amp := m.ReadAmp()
 
 		fmt.Printf("ReadAmp Count: %d\n", amp)
-		fmt.Printf("Miss Count: %d\n", m2.Filter.Misses-m1.Filter.Misses)
-		fmt.Printf("Hit Count: %d\n", m2.Filter.Hits-m1.Filter.Hits)
-		fmt.Printf("BlockCache Miss Count: %d\n", m2.BlockCache.Misses-m1.BlockCache.Misses)
-		fmt.Printf("BlockCache Hit Count: %d\n", m2.BlockCache.Hits-m1.BlockCache.Hits)
-		fmt.Printf("TableCache Miss Count: %d\n", m2.TableCache.Misses-m1.TableCache.Misses)
-		fmt.Printf("TableCache Hit Count: %d\n", m2.TableCache.Hits-m1.TableCache.Hits)
+		fmt.Printf("Filter: Hit Count %d; Miss Count: %d\n", m.Filter.Hits, m.Filter.Misses)
+		fmt.Printf("BlockCache: Hit Count %d; Miss Count: %d\n", m.BlockCache.Hits, m.BlockCache.Misses)
+		fmt.Printf("TableCache: Hit Count %d; Miss Count: %d\n", m.TableCache.Hits, m.TableCache.Misses)
 		fmt.Printf("Avg I/O per Get ≈ %.4f\n",
-			float64(blockMiss+tableMiss)/float64(readCount))
+			float64(m.BlockCache.Misses+m.TableCache.Misses)/float64(readCount))
 
-		for i := 0; i < 7; i++ {
-			fmt.Printf("Level %d Bytes read: %.2f MB\n", i, float64(m2.Levels[i].BytesRead-m1.Levels[i].BytesRead)/1024/1024)
-			fmt.Printf("Level %d Size: %.2f MB\n", i, float64(m2.Levels[i].Size)/1024/1024)
-		}
-		fmt.Printf("DB State \n%s", m2.String())
+		fmt.Printf("DB State \n%s", m.String())
 	}
 }
