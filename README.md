@@ -1,22 +1,22 @@
 # bench_kvdb
 
-A benchmarking tool designed to evaluate random read performance of traditional KV databases such as **PebbleDB**, specifically focusing on **IO operations per key read (IO per GET)**.
+A benchmarking tool designed to evaluate random read performance of traditional KV databases such as **PebbleDB**, specifically focusing on **IO operations per key read (IO per Key)**.
 
-This project originated from research around the new trie database design proposed in the Base `triedb` repo:
-
+This project originated from research around the new trie database design proposed in the Base `triedb` repo.
 In the Base TrieDB repository (https://github.com/base/triedb/), the following design assumption is stated:
 
-> “While traversing the trie from Root to Leaf in order to read a single value is predicted to scale logarithmically with 
-> the size of the trie (O(log N)), this is also the cost associated with accessing each item stored in a Key/Value database.”
+> While traversing the trie from Root to Leaf in order to read a single value is predicted to scale logarithmically with 
+> the size of the trie (`O(log N)`), this is also the cost associated with accessing each item stored in a Key/Value database.
+> In effect, the database must be fully searched for each independent trie node, and
+> this work must be repeated until a Leaf node is found, resulting in a true scaling factor of O(log N * log N).
 
 ---
 
 ## Why This Project Exists
 
-Many blockchain research discussions (like Base TrieDB) assume that KV DB (like pebble DB) requires approximately` O(log N)` work to perform a key lookup.
-When this is combined with trie traversal (which also takes` O(log N)` steps), the **estimated cost becomes**: `O(log N * log N)`
+Many blockchain research discussions (like Base TrieDB) assume that KV DB (like pebble DB) requires approximately `O(log N)` work to perform a key lookup.
 
-However — this assumption may be **incorrect**.
+However, this assumption may be **incorrect** in the actual scenarios of blockchain.
 
 ### Why is Assumed to Have `log(N)` Lookup Cost? 
 
@@ -32,10 +32,12 @@ https://github.com/cockroachdb/pebble/blob/master/options.go#L736
 // desired size of each level of the LSM. Defaults to 10.
 LevelMultiplier int
 ```
+
 ![sample.png](./images/sample.png)
+
 ### Read Path in PebbleDB
-A typical Get(key) lookup proceeds as follows: 
-1. Filter SST with MANIFEST metadata
+A typical Get (key lookup) proceeds as follows: 
+1. Filter SST file with MANIFEST metadata
   - Already resident in memory after DB open—no I/O.
 2. Search Level 0 (L0)
   - Files may overlap in key ranges.
@@ -59,39 +61,40 @@ A typical Get(key) lookup proceeds as follows:
 
 ### Expected I/O Behavior
 
-If the database has N non-empty levels (e.g. L0, L3, L4, L5, L6 → N=5), the theoretical worst-case number of disk 
-reads is roughly: 
-> I/O Count = N + 2
+If the database has N non-empty levels (as shown in the example above. L0, L3, L4, L5, L6 → N=5), the theoretical 
+worst-case number of disk reads is roughly: 
+> I/O Count = N (load bloom filter block) + 2 (load index block and data block)
 
-So it leads to theoretical O(log N) read complexity. 
+So it leads to theoretical `O(log N)` read complexity. 
 
-### Why O(log N) Does Not Reflect Reality
+### Why `O(log N)` Does Not Reflect Reality
 In long-running blockchain workloads (e.g., Geth, Base), layers become warmed into cache. In many cases:
-- Bloom filters of earlier levels are fully cached
-- Index blocks may also remain in cache
+- Bloom filters of earlier levels, and even all levels are fully cached;
+- Index blocks may be also cached;
+- Data blocks may be also cached.
 
 This means the actual observed cost is often:
-> < 2 I/O per Get
+> < 2 I/O per Key
 
-Instead of O(log N), real-world performance trends toward O(1) due to cache locality and repeated access patterns.
+Instead of `O(log N)`, real-world performance trends toward `O(1)` due to cache state and repeated access patterns.
 
 ### Benchmark Plan 
 
 To verify this actual behavior, the benchmark will:
-1. Use Pebble DB (same DB used by Geth).
+1. Use Pebble DB (same DB used by Geth);
 2. Test multiple cache configurations:
-    - 16MB - min Geth cache size
-    - 512MB - default Geth cache size
-    - Full memory - Large enough cache to hold all Bloom filters + Index blocks.
-3. Measure only storage I/O, not response latency. 
-4. Calculate I/O per Get using `Pebble` internal metrics below Which is very similar to OS-level I/O: 
-   > IO per GET ≈ (BlockCache Miss Count + TableCache Miss Count) / Key Lookup Count
+    - 16MB - Minimum Geth cache size;
+    - 512MB - Default Geth cache size;
+    - Large memory - Large enough cache to hold all Bloom filters + Index blocks.
+3. Measure only storage I/O, not response latency;
+4. Calculate I/O per Key using `Pebble` internal metrics below which is very similar to OS-level I/O: 
+   > IO per Key ≈ (BlockCache Miss Count + TableCache Miss Count) / Key Lookup Count
 5. Dataset sizes:
-    - Keys: each key is a 32-byte hash
+    - Keys: 32 bytes hash with count: 
       - 200M keys
       - 2B keys
       - 20B keys
-    - Value: 110 bytes, matching typical Ethereum average trie storage value size.
+    - Values: 110 bytes, matching typical Ethereum average trie storage value size.
 
 This repository exists to **empirically measure** that.
 
@@ -115,7 +118,7 @@ go build
 - --c: cache size in MB
 - --T：total number of keys count
 - --t: threads count
-- --w：random write count
+- --w：random update count
 - --r：random read count
 - --p：db path
 - --l：log level
@@ -152,4 +155,4 @@ Random-read benchmark using 10M random keys:
 | 20B Keys     | 2.2 TB  | 23 GB       | 18 GB      | 4.32             | 2.57              | 0.84 (51.2GB)      |
 
 
-Logs: [`src/bench_pebble/runlog/`](https://github.com/QuarkChain/bench_kvdb/src/bench_pebble/logs/)
+Logs: [`src/bench_pebble/logs/`](https://github.com/QuarkChain/bench_kvdb/src/bench_pebble/logs/)
