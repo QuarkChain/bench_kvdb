@@ -1,0 +1,32 @@
+Threads: 32
+Total data: 200000000 while needInit=true
+Ops: 0 write ops and 0 read ops
+Init write: 200000000 ops in 153762.00 ms (1300711.49 ops/s)
+DB State 
+      |                             |       |       |   ingested   |     moved    |    written   |       |    amp   |     multilevel
+level | tables  size val-bl vtables | score |   in  | tables  size | tables  size | tables  size |  read |   r   w  |    top   in  read
+------+-----------------------------+-------+-------+--------------+--------------+--------------+-------+----------+------------------
+    0 |   126  294MB     0B       0 |  1.03 |  27GB |     0     0B |     0     0B |   12K   26GB |    0B |   5  1.0 |    0B    0B    0B
+    1 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0 |    0B    0B    0B
+    2 |     0     0B     0B       0 |  0.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0  0.0 |    0B    0B    0B
+    3 |    22   73MB     0B       0 |  1.29 |  18GB |     0     0B |     0     0B |  4.7K   20GB |  20GB |   1  1.1 |    0B    0B    0B
+    4 |   156  692MB     0B       0 |  1.29 |  21GB |     0     0B |   492  2.2GB |  8.2K   38GB |  38GB |   1  1.8 |    0B    0B    0B
+    5 |   434  3.4GB     0B       0 |  1.30 |  22GB |     0     0B |   449  1.8GB |  8.2K   58GB |  58GB |   1  2.6 | 1.9GB 7.3GB  22GB
+    6 |   842   18GB     0B       0 |     - |  22GB |     0     0B |    27  116MB |  3.7K   56GB |  60GB |   1  2.5 | 1.0GB 3.6GB 9.6GB
+total |  1.6K   22GB     0B       0 |     - |  27GB |     0     0B |   968  4.1GB |   37K  226GB | 176GB |   9  8.4 | 3.0GB  11GB  32GB
+---------------------------------------------------------------------------------------------------------------------------------------
+WAL: 2 files (189MB)  in: 27GB  written: 27GB (0% overhead)
+Flushes: 271
+Compactions: 9410  estimated debt: 9.2GB  in progress: 10 (115MB)
+             default: 8442  delete: 0  elision: 0  move: 968  read: 0  rewrite: 0  multi-level: 791
+MemTables: 2 (256MB)  zombie: 0 (0B)
+Zombie tables: 50 (453MB)
+Backing tables: 0 (0B)
+Virtual tables: 0 (0B)
+Block cache: 190 entries (99KB)  hit rate: 0.1%
+Table cache: 95 entries (75KB)  hit rate: 50.0%
+Secondary cache: 0 entries (0B)  hit rate: 0.0%
+Snapshots: 0  earliest seq num: 0
+Table iters: 18
+Filter utility: 0.0%
+Ingestions: 0  as flushable: 0 (0B in 0 tables)
