@@ -1,6 +1,6 @@
 # bench_kvdb
 
-A benchmarking tool designed to evaluate random read performance of traditional KV databases such as **PebbleDB**, specifically focusing on **IO operations per key read (IO per Key)**.
+A benchmarking tool designed to evaluate random read performance of traditional KV databases such as **PebbleDB**, specifically focusing on **IO operations per key read (IO per GET operation)**.
 
 This project originated from research around the new trie database design proposed in the Base `triedb` repo.
 In the Base TrieDB repository (https://github.com/base/triedb/), the following design assumption is stated:
@@ -35,15 +35,17 @@ LevelMultiplier int
 
 ![sample.png](./images/sample.png)
 
+
 ### Read Path in PebbleDB
 A typical Get (key lookup) proceeds as follows: 
-1. Filter SST file with MANIFEST metadata
+1. Check MemTable / Immutable MemTables (in memory, no I/O)
+2. Filter SST file with MANIFEST metadata
   - Already resident in memory after DB open—no I/O.
-2. Search Level 0 (L0)
-  - Files may overlap in key ranges.
+3. Search Level 0 (L0)
+  - May check multiple SSTs due to overlap in key ranges.
   - L0 is typically small and often fully cached, so lookups here usually incur `no disk I/O`.
   - All candidate SSTs for the key must be checked.
-3. Search levels (LBase and higher)
+4. Search levels (LBase and higher)
   - Since levels from LBase onward have non-overlapping key ranges, at most one SST per level needs to be queried:
   - Bloom Filter check
     - If cached → no I/O
@@ -56,7 +58,7 @@ A typical Get (key lookup) proceeds as follows:
     - Return value if the key is found.
   - If the Bloom Filter indicates the key does not exist:
     - Skip this SST immediately without reading index or data blocks.
-4. Continue downward through levels
+5. Continue downward through levels
   - Stop when the key is found, or return NotFound after all candidate SSTs have been checked.
 
 ### Expected I/O Behavior
@@ -68,7 +70,7 @@ worst-case number of disk reads is roughly:
 So it leads to theoretical `O(log N)` read complexity. 
 
 ### Why `O(log N)` Does Not Reflect Reality
-In long-running blockchain workloads (e.g., Geth, Base), layers become warmed into cache. In many cases:
+In long-running blockchain workloads (e.g., Geth, Optimism), layers become warmed into cache. In many cases:
 - Bloom filters of earlier levels, and even all levels are fully cached;
 - Index blocks may be also cached;
 - Data blocks may be also cached.
@@ -88,9 +90,9 @@ To verify this actual behavior, the benchmark will:
     - Large memory - Large enough cache to hold all Bloom filters + Index blocks.
 3. Measure only storage I/O, not response latency;
 4. Calculate I/O per Key using `Pebble` internal metrics below which is very similar to OS-level I/O: 
-   > IO per Key ≈ (BlockCache Miss Count + TableCache Miss Count) / Key Lookup Count
+   > IO per GET operation ≈ (BlockCache Miss Count + TableCache Miss Count) / Key Lookup Count
 5. Dataset sizes:
-    - Keys: 32 bytes hash with count: 
+    - Keys: 32 bytes hash: 
       - 200M keys
       - 2B keys
       - 20B keys
@@ -145,10 +147,10 @@ cd ./src/bench_pebble
 - Disk: SAMSUNG MZQL23T8HCLS-00A07 + RAID 0
 - OS: Ubuntu
 
-### IO per Key
+### IO per GET operation
 Random-read benchmark using 10M random keys:
 
-| Data Count   | DB Size | Filter Size | Index Size | IO per Key (16M) | IO per Key (512M) | IO per Key (large) |
+| Data Count   | DB Size | Filter Size | Index Size | IO per GET (16M) | IO per GET (512M) | IO per GET (large) |
 |--------------|---------|-------------|------------|------------------|-------------------|--------------------|
 | 200M Keys    | 22 GB   | 238 MB      | 176 MB     | 1.93             | 0.51              | 0.44 (5.12GB)      |
 | 2B Keys      | 226 GB  | 2.3 GB      | 1.7 GB     | 3.23             | 0.97              | 0.57 (5.12GB)      |
