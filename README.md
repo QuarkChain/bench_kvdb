@@ -163,8 +163,8 @@ Random-read benchmark using 10M random keys:
 
 | Data Count   | DB Size | Filter Size | Index Size | IO per GET (16M) | IO per GET (512M) | IO per GET (large) |
 |--------------|---------|-------------|------------|------------------|-------------------|--------------------|
-| 200M Keys    | 22 GB   | 238 MB      | 176 MB     | 3.86             | 1.02              | 0.86 (5.12GB)      |
+| 200M Keys    | 22 GB   | 238 MB      | 176 MB     | 3.86             | 1.02              | 1.02 (512MB)       |
 | 2B Keys      | 226 GB  | 2.3 GB      | 1.7 GB     | 6.46             | 1.94              | 1.04 (5.12GB)      |
-| 20B Keys     | 2.2 TB  | 23 GB       | 18 GB      | 8.64             | 5.14              | 1.68 (51.2GB)      |
+| 20B Keys     | 2.2 TB  | 23 GB       | 18 GB      | 8.64             | 5.14              | 1.08 (51.2GB)      |
 
 Logs: [`src/bench_pebble/logs/`](https://github.com/QuarkChain/bench_kvdb/src/bench_pebble/logs/)
