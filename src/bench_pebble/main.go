@@ -94,7 +94,6 @@ func randomRead(tid int64, per, total int64, db *pebble.DB, wg *sync.WaitGroup) 
 			ms := time.Since(st).Milliseconds()
 			fmt.Printf("thread %d used time %d ms, hps %d\n", tid, ms, i*1000/ms)
 		}
-		i++
 	}
 	if *logLevel >= 3 {
 		tu := time.Since(st).Seconds()

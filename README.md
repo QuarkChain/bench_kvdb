@@ -34,32 +34,42 @@ LevelMultiplier int
 ```
 
 ![sample.png](./images/sample.png)
+This output shows Pebble DB statistics generated using `pebble db properties /path-to-db`.
 
+In this example, the database contains 600m records, stored in 3,827 SST files distributed across levels L0–L6. 
+The report includes per-level details such as the size of data blocks, index blocks, and Bloom filter blocks.
+The `LBase` level is L3, which holds 62 MB of data, close to its configured limit of 64 MB. 
+Beyond L3, each level is allowed to grow up to roughly 10× the capacity of the previous level, 
+following the typical LSM-tree size amplification model.
+
+Note: `LBase` is the first layer besides L0 that contains data.
 
 ### Read Path in PebbleDB
 A typical Get (key lookup) proceeds as follows: 
-1. Check MemTable / Immutable MemTables (in memory, no I/O)
-2. Filter SST file with MANIFEST metadata
-  - Already resident in memory after DB open—no I/O.
+1. Check MemTable / Immutable MemTables (in memory - no I/O)
+2. Consult MANIFEST metadata
+  - Used to determine candidate SST files;
+  - Already loaded in memory after DB open — no I/O.
 3. Search Level 0 (L0)
-  - May check multiple SSTs due to overlap in key ranges.
-  - L0 is typically small and often fully cached, so lookups here usually incur `no disk I/O`.
-  - All candidate SSTs for the key must be checked.
-4. Search levels (LBase and higher)
-  - Since levels from LBase onward have non-overlapping key ranges, at most one SST per level needs to be queried:
+  - May need to check multiple SSTs because key ranges can overlap.
+  - L0 is usually small and often fully cached, so lookups here usually incur `no disk I/O`.
+4. Search levels (`LBase` and higher) 
+  - Since levels from `LBase` onward have non-overlapping key ranges, at most one SST per level needs to be queried:
   - Bloom Filter check
     - If cached → no I/O
     - If not cached → 1 disk read to load the filter block
+    - A high Bloom filter hit rate is crucial:
+      If the filter says the key does not exist, the SST can be skipped entirely — meaning the lookup
+      cost for a non-existing key is almost zero I/O.
   - If the Bloom Filter indicates the key may exist:
-    - Index Block lookup
-      - 0–1 I/O depending on cache state
-    - Data Block read
-      - 0–1 I/O depending on cache state
-    - Return value if the key is found.
+    - Index Block lookup → 0–1 I/O depending on cache state
+    - Data Block read → 0–1 I/O depending on cache state
+    - If found → return value.
   - If the Bloom Filter indicates the key does not exist:
     - Skip this SST immediately without reading index or data blocks.
 5. Continue downward through levels
-  - Stop when the key is found, or return NotFound after all candidate SSTs have been checked.
+  - Stop when the key is found, 
+  - Or return `NotFound` after all candidate SSTs have been checked.
 
 ### Expected I/O Behavior
 
@@ -70,10 +80,11 @@ worst-case number of disk reads is roughly:
 So it leads to theoretical `O(log N)` read complexity. 
 
 ### Why `O(log N)` Does Not Reflect Reality
-In long-running blockchain workloads (e.g., Geth, Optimism), layers become warmed into cache. In many cases:
-- Bloom filters of earlier levels, and even all levels are fully cached;
-- Index blocks may be also cached;
-- Data blocks may be also cached.
+In long-running blockchain workloads (e.g., Geth, Optimism), frequently accessed metadata tend to remain in cache over time.  
+When the cache is sufficiently large, the following components often become resident in memory:
+- Bloom filters (especially for the hot or upper levels in the LSM tree)
+- Index blocks
+- In some cases, data blocks as well
 
 This means the actual observed cost is often:
 > < 2 I/O per Key
@@ -152,9 +163,8 @@ Random-read benchmark using 10M random keys:
 
 | Data Count   | DB Size | Filter Size | Index Size | IO per GET (16M) | IO per GET (512M) | IO per GET (large) |
 |--------------|---------|-------------|------------|------------------|-------------------|--------------------|
-| 200M Keys    | 22 GB   | 238 MB      | 176 MB     | 1.93             | 0.51              | 0.44 (5.12GB)      |
-| 2B Keys      | 226 GB  | 2.3 GB      | 1.7 GB     | 3.23             | 0.97              | 0.57 (5.12GB)      |
-| 20B Keys     | 2.2 TB  | 23 GB       | 18 GB      | 4.32             | 2.57              | 0.84 (51.2GB)      |
-
+| 200M Keys    | 22 GB   | 238 MB      | 176 MB     | 3.86             | 1.02              | 0.86 (5.12GB)      |
+| 2B Keys      | 226 GB  | 2.3 GB      | 1.7 GB     | 6.46             | 1.94              | 1.04 (5.12GB)      |
+| 20B Keys     | 2.2 TB  | 23 GB       | 18 GB      | 8.64             | 5.14              | 1.68 (51.2GB)      |
 
 Logs: [`src/bench_pebble/logs/`](https://github.com/QuarkChain/bench_kvdb/src/bench_pebble/logs/)
