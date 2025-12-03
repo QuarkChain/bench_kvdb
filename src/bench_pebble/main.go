@@ -300,7 +300,7 @@ func main() {
 
 	if readCount > 0 {
 		// warn up DB
-		per := threads / 10000 / threads
+		per := total / 10000 / threads
 		for tid := int64(0); tid < threads; tid++ {
 			wg.Add(1)
 			id := tid

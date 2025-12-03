@@ -252,6 +252,7 @@ cd ./src/bench_pebble
 - Memory: 128 GB
 - Disk: SAMSUNG MZQL23T8HCLS-00A07 + RAID 0
 - OS: Ubuntu
+- Pebble Version: v1.1.5
 
 ### IO per GET operation
 Random-read benchmark using 10M random keys:
