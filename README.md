@@ -33,83 +33,178 @@ https://github.com/cockroachdb/pebble/blob/master/options.go#L736
 LevelMultiplier int
 ```
 
-![sample.png](./images/sample.png)
-This output shows Pebble DB statistics generated using `pebble db properties /path-to-db`.
+![ethereum.png](./images/ethereum.png)
+This output shows detailed table and space statistics of a Pebble DB instance generated using: `pebble db properties /path-to-db`.
 
-In this example, the database contains 600m records, stored in 3,827 SST files distributed across levels L0–L6. 
-The report includes per-level details such as the size of data blocks, index blocks, and Bloom filter blocks.
-The `LBase` level is L3, which holds 62 MB of data, close to its configured limit of 64 MB. 
-Beyond L3, each level is allowed to grow up to roughly 10× the capacity of the previous level, 
-following the typical LSM-tree size amplification model.
+In this example, the database contains approximately `7.9 billion key-value` entries, stored across `14,840 SST` files 
+distributed over levels L0–L6. The total on-disk data size is about `440 GB`.
+For each level, the report breaks down:
+- actual data block size (data)
+- index block size (index)
+- Bloom filter block size (filter)
+- and raw key/value sizes.
 
-Note: `LBase` is the first layer besides L0 that contains data.
+From the size distribution:
+- The majority of data resides in L6 (≈ 393 GB), which is expected for a healthy LSM-tree.
+- Intermediate levels (L2–L5) exhibit an approximately 10× growth pattern, consistent with the typical LSM-tree level 
+sizing strategy, though this is a soft target rather than a strict limit in Pebble.
+
+**LBase Explanation**
+
+In Pebble, **LBase is the base level currently selected by the compaction scheduler as the primary target for L0 compactions**.
+
+LBase is **dynamic** and may change over time based on:
+
+- compaction scores of each level
+- write and flush pressure
+- compaction backlog
+
+In this snapshot:
+
+- L1 is empty
+- L2 contains about 54 MB of data
+
+Therefore, **L2 is very likely acting as the current LBase**, meaning new L0 compactions will most likely target L2 directly.
 
 ### Read Path in PebbleDB
 A typical Get (key lookup) proceeds as follows: 
 1. Check MemTable / Immutable MemTables (in memory - no I/O)
-2. Consult MANIFEST metadata
-  - Used to determine candidate SST files;
-  - Already loaded in memory after DB open — no I/O.
+
+2. Consult MANIFEST metadata (in memory - no I/O)
+    - Used to determine candidate SST files.
+    - Already loaded in memory after DB open.
+
 3. Search Level 0 (L0)
-  - May need to check multiple SSTs because key ranges can overlap.
-  - L0 is usually small and often fully cached, so lookups here usually incur `no disk I/O`.
+    - May need to check multiple SSTs because key ranges can overlap.
+    - L0 is usually small and often fully cached, so lookups here usually incur `no disk I/O`.
+
 4. Search levels (`LBase` and higher) 
-  - Since levels from `LBase` onward have non-overlapping key ranges, at most one SST per level needs to be queried:
-  - Bloom Filter check
-    - If cached → no I/O
-    - If not cached → 1 disk read to load the filter block
-    - A high Bloom filter hit rate is crucial:
-      If the filter says the key does not exist, the SST can be skipped entirely — meaning the lookup
-      cost for a non-existing key is almost zero I/O.
-  - If the Bloom Filter indicates the key may exist:
-    - Index Block lookup → 0–1 I/O depending on cache state
-    - Data Block read → 0–1 I/O depending on cache state
-    - If found → return value.
-  - If the Bloom Filter indicates the key does not exist:
-    - Skip this SST immediately without reading index or data blocks.
+    - Since levels from `LBase` onward have non-overlapping key ranges, at most one SST per level needs to be queried:
+    - Bloom Filter check
+      - If cached → no I/O
+      - If not cached → 1 disk read to load the filter block
+      - A high Bloom filter hit rate is crucial:
+        If the filter says the key does not exist, the SST can be skipped entirely — meaning the lookup
+        cost for a non-existing key is almost zero I/O.
+    - If the Bloom Filter indicates the key may exist:
+      - Index Block lookup → 0–1 I/O depending on cache state
+      - Data Block read → 0–1 I/O depending on cache state
+      - If found → return value.
+    - Special optimization for the last level (L6)
+      - L6 intentionally does not use Bloom filters.
+      - The lookup directly uses the index block to locate the data block.
+      - Reason for this optimization:
+        - L6 contains the largest portion of the database.
+        - The Bloom filter for L6 would be very large, with: 
+          - Low cache efficiency
+          - High memory cost
+          - Diminishing filtering benefit (since most keys eventually fall into L6)
+        - The index already provides efficient block-level pruning.
+      - Therefore:
+        - Skipping the L6 Bloom filter saves cache space
+        - Avoids one extra disk read
+        - Reduces total I/O and memory pressure
+
 5. Continue downward through levels
-  - Stop when the key is found, 
-  - Or return `NotFound` after all candidate SSTs have been checked.
+    - Stop when the key is found, 
+    - Or return `NotFound` after all candidate SSTs have been checked.
 
 ### Expected I/O Behavior
 
-If the database has N non-empty levels (as shown in the example above. L0, L3, L4, L5, L6 → N=5), the theoretical 
-worst-case number of disk reads is roughly: 
-> I/O Count = N (load bloom filter block) + 2 (load index block and data block)
+If the database has N non-empty levels (as shown in the example above. L0, L3, L4, L5, L6 → N=5), 
+The theoretical worst-case disk I/O count per Get operation is:
 
-So it leads to theoretical `O(log N)` read complexity. 
+$$
+\text{I/O} \approx (N - 1) + 2
+$$
+
+| Term | Meaning |
+|------|---------|
+| (N - 1) | Bloom filter loads for all levels except L6 |
+| + 2 | Index block + Data block |
+
+Which leads to the commonly quoted:
+> Theoretical complexity: O(log N)
+
+This reflects the fact that an LSM tree has logarithmic fan-out across levels.
 
 ### Why `O(log N)` Does Not Reflect Reality
-In long-running blockchain workloads (e.g., Geth, Optimism), frequently accessed metadata tend to remain in cache over time.  
-When the cache is sufficiently large, the following components often become resident in memory:
-- Bloom filters (especially for the hot or upper levels in the LSM tree)
-- Index blocks
-- In some cases, data blocks as well
+In real blockchain workloads (e.g., Geth, Optimism), the theoretical `O(log N)` bound significantly overestimates real 
+disk I/O, mainly due to the behavior of Bloom filters and cache residency.
+1. Bloom Filters Prevent Most Useless I/O
+    - Bloom filters are checked before index and data blocks.
+    - If the filter says “key does not exist”, the SST is skipped with:
+      - No index block read
+      - No data block read
+    - This effectively removes most negative lookups from touching disk.
 
-This means the actual observed cost is often:
-> < 2 I/O per Key
+2. Bloom Filters Excluding L6 Are Very Small
+    - Typical Bloom filter size (for all levels except L6) `≈ 0.2%` of total data size
+    - Bloom filters:
+      - Are accessed on almost every `Get`
+      - Are highly cache-friendly
+      - Have extremely high reuse
+    - Therefore, if:  
+      > Cache Size > ~0.2% of DB Size
+    - then
+      - Almost all Bloom filters remain resident in memory
+      - Bloom filter lookups incur ~0 disk I/O
+      - Combined with index and data block reads, the total I/O per Get operation tends toward 2 (1 for index, 1 for data block in worst case)
 
-Instead of `O(log N)`, real-world performance trends toward `O(1)` due to cache state and repeated access patterns.
+3. I/O Cost with Sufficient Cache
+    - Cache can hold: `Bloom filters` + `Index blocks` + `Hot data blocks` > `1.5%` of total data size
+    - Then for most Get operations:
+      - Bloom filter → 0 I/O
+      - Index block → 0 I/O
+    - So the real cost becomes:
+      - `≈ 1–2 disk I/Os per Get` operation → Effectively O(1)
+      - If cache is even larger or hot data blocks have high hit rate, I/O per Get operation can drop below 1
 
-### Benchmark Plan 
+### Conclusion: PebbleDB Achieves O(1)-Like Read I/O Under Sufficient Cache
+Although the theoretical read complexity of PebbleDB is `O(log N)` due to the multi-level LSM structure, 
+this does not reflect real-world behavior. Thanks to: 
+- The extremely small size of Bloom filters excluding L6 (~0.2% of DB),
+- Their very high access frequency,
+- And sufficient cache residency,
 
-To verify this actual behavior, the benchmark will:
-1. Use Pebble DB (same DB used by Geth);
+most negative lookups are filtered in memory, and positive lookups usually require only one or two data blocks read.
+
+> With sufficient cache, the real read I/O complexity of PebbleDB is effectively O(1) and converges to 1–2 I/O per Get operation.
+
+
+### Benchmark Plan: Validating the O(1)-Like Read Behavior
+
+To verify the previous conclusion, the benchmark will:
+
+1. Use **Pebble DB** (the same storage engine used by Geth).
+
 2. Test multiple cache configurations:
-    - 16MB - Minimum Geth cache size;
-    - 512MB - Default Geth cache size;
-    - Large memory - Large enough cache to hold all Bloom filters + Index blocks.
-3. Measure only storage I/O, not response latency;
-4. Calculate I/O per Key using `Pebble` internal metrics below which is very similar to OS-level I/O: 
-   > IO per GET operation ≈ (BlockCache Miss Count + TableCache Miss Count) / Key Lookup Count
-5. Dataset sizes:
-    - Keys: 32 bytes hash: 
-      - 200M keys
-      - 2B keys
-      - 20B keys
-    - Values: 110 bytes, matching typical Ethereum average trie storage value size.
+    - `0.2%` and `0.4%` of DB size (Bloom-filter-dominant cache)
+    - `1.5%` and `2%` of DB size (Bloom filter + index + hot data cache)
 
-This repository exists to **empirically measure** that.
+3. **Warm-up phase (to eliminate cold-cache effects):**
+    - Before formal measurement, pre-read approximately **0.01% of the total key space**.
+    - Purpose:
+        - Populate Bloom filters and hot index blocks into cache,
+        - Avoid inflated I/O caused by initial cold misses,
+        - Ensure the system reaches a **steady-state cache behavior**.
+    - Only after warm-up completes will formal statistics be collected.
+
+4. Measure **storage I/O only**, not response latency.
+
+5. Calculate **I/O per Get** using Pebble internal metrics, which closely approximate OS-level block I/O behavior:
+
+   > I/O per Get ≈ (BlockCache Miss Count + TableCache Miss Count) / Key Lookup Count
+
+6. Dataset sizes:
+    - **Keys**: 32-byte hashes
+        - 200M keys
+        - 2B keys
+        - 20B keys
+    - **Values**: 110 bytes, matching the typical average value size in Ethereum trie storage.
+
+This repository exists to **validate** that PebbleDB read I/O converges to **O(1)** under sufficient cache 
+and steady-state access patterns.
 
 ---
 
@@ -161,10 +256,15 @@ cd ./src/bench_pebble
 ### IO per GET operation
 Random-read benchmark using 10M random keys:
 
-| Data Count   | DB Size | Filter Size | Index Size | IO per GET (16M) | IO per GET (512M) | IO per GET (large) |
-|--------------|---------|-------------|------------|------------------|-------------------|--------------------|
-| 200M Keys    | 22 GB   | 238 MB      | 176 MB     | 3.86             | 1.02              | 1.02 (512MB)       |
-| 2B Keys      | 226 GB  | 2.3 GB      | 1.7 GB     | 6.46             | 1.94              | 1.04 (5.12GB)      |
-| 20B Keys     | 2.2 TB  | 23 GB       | 18 GB      | 8.64             | 5.14              | 1.08 (51.2GB)      |
+| Metric                                        | 200M Keys | 2B Keys  | 20B Keys |
+|-----------------------------------------------|-----------|----------|----------|
+| DB Size                                       | 22 GB     | 226 GB   | 2.2 TB   |
+| Filter Size (Without L6)                      | 30 MB     | 273 MB   | 2.4 GB   |
+| Filter Size (With L6)                         | 238 MB    | 2.3 GB   | 23 GB    |
+| Index Size                                    | 176 MB    | 1.7 GB   | 18 GB    |
+| IO per GET (Bloom Only, 0.2% DB Size)         | 32        | 6.46     | 8.64     |
+| IO per GET (Bloom × 2, 0.4% DB Size)          | 1.02      | 1.94     | 5.14     |
+| IO per GET (Bloom + Index, 1.5 % DB Size)     | 1.02      | 1.04     | 1.08     |
+| IO per GET ((Bloom + Index) × 2, 3 % DB Size) | 1.02      | 1.04     | 1.08     |
 
 Logs: [`src/bench_pebble/logs/`](https://github.com/QuarkChain/bench_kvdb/src/bench_pebble/logs/)

@@ -42,10 +42,6 @@ var (
 	logLevel = flag.Int64("l", 3, "Log level")
 )
 
-var (
-	randBytes = make([]byte, valLen*keyLen)
-)
-
 func hash(sha crypto.KeccakState, in []byte) []byte {
 	sha.Reset()
 	sha.Write(in)
@@ -54,18 +50,19 @@ func hash(sha crypto.KeccakState, in []byte) []byte {
 	return h
 }
 
-func randomWrite(tid, count, start, end int64, db *pebble.DB, wg *sync.WaitGroup) {
+func randomWrite(tid, count, total int64, db *pebble.DB, wg *sync.WaitGroup) {
 	defer wg.Done()
 	st := time.Now()
 	key := make([]byte, keyLen)
 	r := rand.New(rand.NewSource(time.Now().UnixNano() + tid))
 	sha := crypto.NewKeccakState()
 	for i := int64(0); i < count; i++ {
-		rv := r.Int63n(end-start) + start
-		s := (rv % keyLen) * valLen
+		rv := r.Int63n(total)
 		binary.BigEndian.PutUint64(key[keyLen-8:keyLen], uint64(rv))
 		k := hash(sha, key)
-		_ = db.Set(k, randBytes[s:s+valLen], nil)
+		value := make([]byte, valLen)
+		rand.Read(value)
+		_ = db.Set(k, value, nil)
 		if *logLevel >= 3 && i%1000000 == 0 && i > 0 {
 			ms := time.Since(st).Milliseconds()
 			fmt.Printf("thread %d used time %d ms, hps %d\n", tid, ms, i*1000/ms)
@@ -109,11 +106,11 @@ func batchWrite(tid, count int64, db *pebble.DB, wg *sync.WaitGroup) {
 	batch := db.NewBatch()
 	for i := int64(0); i < count; i++ {
 		idx := tid*count + i
-		s := (idx % keyLen) * valLen
 		binary.BigEndian.PutUint64(key[keyLen-8:keyLen], uint64(idx))
 		k := hash(sha, key)
-		batch.Set(k, randBytes[s:s+valLen], nil)
-
+		value := make([]byte, valLen)
+		rand.Read(value)
+		batch.Set(k, value, nil)
 		if i%1000 == 0 {
 			_ = batch.Commit(pebble.NoSync)
 			batch.Reset()
@@ -127,6 +124,7 @@ func batchWrite(tid, count int64, db *pebble.DB, wg *sync.WaitGroup) {
 		}
 	}
 	_ = batch.Commit(pebble.NoSync)
+	batch.Reset()
 	if *logLevel >= 3 {
 		tu := time.Since(st).Seconds()
 		fmt.Printf("thread %d batch write done %.2fs, %.2f ops/s\n", tid, tu, float64(count)/tu)
@@ -139,9 +137,10 @@ func seqWrite(tid, count int64, db *pebble.DB, wg *sync.WaitGroup) {
 	key := make([]byte, keyLen)
 	for i := int64(0); i < count; i++ {
 		idx := tid*count + i
-		s := (idx % keyLen) * valLen
 		binary.BigEndian.PutUint64(key[keyLen-8:keyLen], uint64(idx))
-		_ = db.Set(key, randBytes[s:s+valLen], nil)
+		value := make([]byte, valLen)
+		rand.Read(value)
+		_ = db.Set(key, value, nil)
 		if *logLevel >= 3 && i%1000000 == 0 && i > 0 {
 			ms := time.Since(st).Milliseconds()
 			fmt.Printf("thread %d used time %d ms, hps %d\n", tid, ms, i*1000/ms)
@@ -266,8 +265,6 @@ func main() {
 	fmt.Printf("Total data: %d while needInit=%t\n", total, *ni)
 	fmt.Printf("Ops: %d write ops and %d read ops\n", writeCount, readCount)
 
-	rand.Read(randBytes)
-
 	var wg sync.WaitGroup
 	if *ni && total > 0 {
 		start := time.Now()
@@ -293,7 +290,7 @@ func main() {
 		for tid := int64(0); tid < threads; tid++ {
 			wg.Add(1)
 			id := tid
-			go randomWrite(id, per, 0, total, db, &wg)
+			go randomWrite(id, per, total, db, &wg)
 		}
 		wg.Wait()
 		ms := float64(time.Since(start).Milliseconds())
@@ -302,7 +299,19 @@ func main() {
 	}
 
 	if readCount > 0 {
-		per := readCount / threads
+		// warn up DB
+		per := threads / 10000 / threads
+		for tid := int64(0); tid < threads; tid++ {
+			wg.Add(1)
+			id := tid
+			go randomRead(id, per, total, db, &wg)
+		}
+		wg.Wait()
+		fmt.Printf("\n%s", FormatCacheStats())
+		fmt.Printf("========= Warn up done ===============\n")
+
+		per = readCount / threads
+		m1 := db.Metrics()
 		start := time.Now()
 		for tid := int64(0); tid < threads; tid++ {
 			wg.Add(1)
@@ -312,17 +321,16 @@ func main() {
 		wg.Wait()
 		ms := float64(time.Since(start).Milliseconds())
 		fmt.Printf("Random read: %d ops in %.2f ms (%.2f ops/s)\n", readCount, ms, float64(readCount)*1000/ms)
-		m := db.Metrics()
 
-		amp := m.ReadAmp()
-
-		fmt.Printf("ReadAmp Count: %d\n", amp)
-		fmt.Printf("Filter: Hit Count %d; Miss Count: %d\n", m.Filter.Hits, m.Filter.Misses)
-		fmt.Printf("BlockCache: Hit Count %d; Miss Count: %d\n", m.BlockCache.Hits, m.BlockCache.Misses)
-		fmt.Printf("TableCache: Hit Count %d; Miss Count: %d\n", m.TableCache.Hits, m.TableCache.Misses)
+		m2 := db.Metrics()
+		fmt.Printf("Filter: Hit Count %d; Miss Count: %d\n", m2.Filter.Hits-m1.Filter.Hits, m2.Filter.Misses-m1.Filter.Misses)
+		fmt.Printf("BlockCache: Hit Count %d; Miss Count: %d\n", m2.BlockCache.Hits-m1.BlockCache.Hits, m2.BlockCache.Misses-m1.BlockCache.Misses)
+		fmt.Printf("TableCache: Hit Count %d; Miss Count: %d\n", m2.TableCache.Hits-m1.TableCache.Hits, m2.TableCache.Misses-m1.TableCache.Misses)
 		fmt.Printf("Avg I/O per Get ≈ %.4f\n",
-			float64(m.BlockCache.Misses+m.TableCache.Misses)/float64(readCount))
+			float64(m2.BlockCache.Misses+m2.TableCache.Misses-m1.BlockCache.Misses-m1.TableCache.Misses)/float64(readCount))
 
-		fmt.Printf("DB State \n%s", m.String())
+		fmt.Printf("DB State \n%s", m2.String())
+
+		fmt.Printf("\n%s", FormatCacheStats())
 	}
 }
