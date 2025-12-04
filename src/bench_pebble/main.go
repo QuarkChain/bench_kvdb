@@ -298,7 +298,7 @@ func main() {
 
 	if readCount > 0 {
 		// warn up DB
-		per := total / 2000 / threads
+		per := total / 2000 / threads // 0.5%  of the data
 		for tid := int64(0); tid < threads; tid++ {
 			wg.Add(1)
 			id := tid
@@ -308,7 +308,6 @@ func main() {
 		fmt.Printf("\n%s", FormatCacheStats())
 		fmt.Printf("========= Warn up done ===============\n")
 
-//		time.Sleep(5 * time.Second)
 		per = readCount / threads
 		m1 := db.Metrics()
 		start := time.Now()

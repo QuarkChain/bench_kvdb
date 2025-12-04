@@ -66,6 +66,28 @@ In this snapshot:
 
 Therefore, **L2 is very likely acting as the current LBase**, meaning new L0 compactions will most likely target L2 directly.
 
+### SST File Structure and Usage in PebbleDB
+
+SST (Sorted String Table) is the core storage unit in PebbleDB. Each file contains multiple sections, each serving a specific purpose:
+
+```
++-------------------+
+|    Data Blocks    |  <- Actual key-value entries, read when Bloom filter/index indicate key exists
++-------------------+
+|   Filter Block    |  <- Bloom filter, quickly checks if a key may exist, avoids unnecessary reads
++-------------------+
+|   Index Blocks    |  <- Maps key ranges to data block offsets, helps locate data
++-------------------+
+|  Top-Level Index  |  <- High-level index pointing to index blocks for faster lookup, read at iterator init
++-------------------+
+|    Properties     |  <- File metadata (record count, global seq num)
++-------------------+
+|    Meta-Index     |  <- Pointers to auxiliary data (filters, value blocks)
++-------------------+
+|      Footer       |  <- Offsets for top-index and meta-index
++-------------------+
+```
+
 ### Read Path in PebbleDB
 A typical Get (key lookup) proceeds as follows: 
 1. Check MemTable / Immutable MemTables (in memory - no I/O)
@@ -74,13 +96,14 @@ A typical Get (key lookup) proceeds as follows:
     - Used to determine candidate SST files.
     - Already loaded in memory after DB open.
 
-3. Search Level 0 (L0)
-    - May need to check multiple SSTs because key ranges can overlap.
-    - L0 is usually small and often fully cached, so lookups here usually incur `no disk I/O`.
-
-4. Search levels (`LBase` and higher) 
-    - Since levels from `LBase` onward have non-overlapping key ranges, at most one SST per level needs to be queried:
+3. Search SST files (all levels)
+    - L0: Multiple SSTs may need to be checked due to overlapping key ranges.
+    - `LBase` and higher: SSTs have non-overlapping key ranges; at most one SST per level is queried.
+    - Read the Top-Index at iterator init
+      - Small structure at the end of each SST providing offsets to index blocks.
+      - Usually cached; if not, 1 disk read. (~0 I/O)
     - Bloom Filter check
+      - Table-level filter for the whole SST
       - If cached → no I/O
       - If not cached → 1 disk read to load the filter block
       - A high Bloom filter hit rate is crucial:
@@ -105,13 +128,25 @@ A typical Get (key lookup) proceeds as follows:
         - Avoids one extra disk read
         - Reduces total I/O and memory pressure
 
-5. Continue downward through levels
+4. Continue downward through levels
     - Stop when the key is found, 
     - Or return `NotFound` after all candidate SSTs have been checked.
 
+
+In simple terms
+```
+1. Check MemTable / Immutable MemTables
+2. Check MANIFEST → candidate SSTs
+3. For each SST:
+   a) Table-level Bloom filter → skip SST if key absent
+   b) Top-level index → find index block
+   c) Index block → locate data block
+   d) Data block → read value```
+```
+
 ### Expected I/O Behavior
 
-If the database has N non-empty levels (as shown in the example above. L0, L3, L4, L5, L6 → N=5), 
+If the database has N non-empty levels (as shown in the example above. L0, L2, L3, L4, L5, L6 → N=6), 
 The theoretical worst-case disk I/O count per Get operation is:
 
 $$
@@ -139,7 +174,7 @@ disk I/O, mainly due to the behavior of Bloom filters and cache residency.
     - This effectively removes most negative lookups from touching disk.
 
 2. Bloom Filters Excluding L6 Are Very Small
-    - Typical Bloom filter size (for all levels except L6) `≈ 0.2%` of total data size
+    - Typical Bloom filter size (for all levels except L6) + Top-Index size `≈ 0.2%` of total data size
     - Bloom filters:
       - Are accessed on almost every `Get`
       - Are highly cache-friendly
@@ -149,12 +184,14 @@ disk I/O, mainly due to the behavior of Bloom filters and cache residency.
     - then
       - Almost all Bloom filters remain resident in memory
       - Bloom filter lookups incur ~0 disk I/O
+      - Top-Index block → 0 I/O
       - Combined with index and data block reads, the total I/O per Get operation tends toward 2 (1 for index, 1 for data block in worst case)
 
 3. I/O Cost with Sufficient Cache
-    - Cache can hold: `Bloom filters` + `Index blocks` + `Hot data blocks` > `1.5%` of total data size
+    - Cache can hold: `Bloom filters` + `All Index blocks` + `Hot data blocks` > `1.5%` of total data size
     - Then for most Get operations:
       - Bloom filter → 0 I/O
+      - Top-Index block → 0 I/O
       - Index block → 0 I/O
     - So the real cost becomes:
       - `≈ 1–2 disk I/Os per Get` operation → Effectively O(1)
@@ -183,7 +220,7 @@ To verify the previous conclusion, the benchmark will:
     - `1.5%` and `2%` of DB size (Bloom filter + index + hot data cache)
 
 3. **Warm-up phase (to eliminate cold-cache effects):**
-    - Before formal measurement, pre-read approximately **0.01% of the total key space**.
+    - Before formal measurement, pre-read approximately **0.05% of the total key space**.
     - Purpose:
         - Populate Bloom filters and hot index blocks into cache,
         - Avoid inflated I/O caused by initial cold misses,
