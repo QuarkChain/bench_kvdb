@@ -5,17 +5,17 @@ Ops: 0 write ops and 10000000 read ops
 Cache Statistics:
 --------------------------------------------------------
 Caller		Hits	Misses	Calls	HitRate
-github.com/cockroachdb/pebble/sstable.(*Reader).readFilter	3861008	2349	3863357	1.00
-github.com/cockroachdb/pebble/sstable.(*Reader).readIndex	4741736	7962	4749698	1.00
+github.com/cockroachdb/pebble/sstable.(*Reader).readFilter	3841561	21624	3863185	0.99
+github.com/cockroachdb/pebble/sstable.(*Reader).readIndex	4636806	112703	4749509	0.98
 github.com/cockroachdb/pebble/sstable.(*Reader).readMetaindex	0	14210	14210	0.00
-github.com/cockroachdb/pebble/sstable.(*singleLevelIterator).loadBlock	9503	1033985	1043488	0.01
-github.com/cockroachdb/pebble/sstable.(*twoLevelIterator).loadIndex	132885	910130	1043015	0.13
+github.com/cockroachdb/pebble/sstable.(*singleLevelIterator).loadBlock	7246	1035964	1043210	0.01
+github.com/cockroachdb/pebble/sstable.(*twoLevelIterator).loadIndex	15796	1026919	1042715	0.02
 ========= Warn up done ===============
-Random read: 10000000 ops in 170719.00 ms (58575.79 ops/s)
-Filter: Hit Count 37054952; Miss Count: 1574040
-BlockCache: Hit Count 87785297; Miss Count: 19191184
-TableCache: Hit Count 47486016; Miss Count: 0
-Avg I/O per Get ≈ 1.9191
+Random read: 10000000 ops in 296267.00 ms (33753.34 ops/s)
+Filter: Hit Count 37059183; Miss Count: 1570959
+BlockCache: Hit Count 85152132; Miss Count: 21831651
+TableCache: Hit Count 47490915; Miss Count: 0
+Avg I/O per Get ≈ 2.1832
 DB State 
       |                             |       |       |   ingested   |     moved    |    written   |       |    amp
 level | tables  size val-bl vtables | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
@@ -37,7 +37,7 @@ MemTables: 1 (256KB)  zombie: 0 (0B)
 Zombie tables: 0 (0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
-Block cache: 200K entries (512MB)  hit rate: 82.0%
+Block cache: 70K entries (284MB)  hit rate: 79.6%
 Table cache: 7.1K entries (5.5MB)  hit rate: 100.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
@@ -48,8 +48,8 @@ Ingestions: 0  as flushable: 0 (0B in 0 tables)
 Cache Statistics:
 --------------------------------------------------------
 Caller		Hits	Misses	Calls	HitRate
-github.com/cockroachdb/pebble/sstable.(*Reader).readFilter	42489876	2473	42492349	1.00
-github.com/cockroachdb/pebble/sstable.(*Reader).readIndex	52226220	9494	52235714	1.00
+github.com/cockroachdb/pebble/sstable.(*Reader).readFilter	42302288	191039	42493327	1.00
+github.com/cockroachdb/pebble/sstable.(*Reader).readIndex	51099493	1140931	52240424	0.98
 github.com/cockroachdb/pebble/sstable.(*Reader).readMetaindex	0	14210	14210	0.00
-github.com/cockroachdb/pebble/sstable.(*singleLevelIterator).loadBlock	105102	11371513	11476615	0.01
-github.com/cockroachdb/pebble/sstable.(*twoLevelIterator).loadIndex	1709231	9762130	11471361	0.15
+github.com/cockroachdb/pebble/sstable.(*singleLevelIterator).loadBlock	80445	11396543	11476988	0.01
+github.com/cockroachdb/pebble/sstable.(*twoLevelIterator).loadIndex	171315	11300348	11471663	0.01

@@ -1,12 +1,21 @@
 Threads: 64
 Total data: 2000000000 while needInit=false
 Ops: 0 write ops and 10000000 read ops
-Random read: 10000000 ops in 29561.00 ms (338283.55 ops/s)
-ReadAmp Count: 5
-Filter: Hit Count 18528297; Miss Count: 785668
-BlockCache: Hit Count 47834197; Miss Count: 5673894
-TableCache: Hit Count 23745622; Miss Count: 7105
-Avg I/O per Get ≈ 0.5681
+
+Cache Statistics:
+--------------------------------------------------------
+Caller		Hits	Misses	Calls	HitRate
+github.com/cockroachdb/pebble/sstable.(*Reader).readFilter	3860789	2248	3863037	1.00
+github.com/cockroachdb/pebble/sstable.(*Reader).readIndex	4740924	8000	4748924	1.00
+github.com/cockroachdb/pebble/sstable.(*Reader).readMetaindex	0	14210	14210	0.00
+github.com/cockroachdb/pebble/sstable.(*singleLevelIterator).loadBlock	9432	1034146	1043578	0.01
+github.com/cockroachdb/pebble/sstable.(*twoLevelIterator).loadIndex	107681	935378	1043059	0.10
+========= Warn up done ===============
+Random read: 10000000 ops in 184523.00 ms (54193.79 ops/s)
+Filter: Hit Count 37058405; Miss Count: 1571416
+BlockCache: Hit Count 87449009; Miss Count: 19536109
+TableCache: Hit Count 47490956; Miss Count: 0
+Avg I/O per Get ≈ 1.9536
 DB State 
       |                             |       |       |   ingested   |     moved    |    written   |       |    amp
 level | tables  size val-bl vtables | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
@@ -28,10 +37,19 @@ MemTables: 1 (256KB)  zombie: 0 (0B)
 Zombie tables: 0 (0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
-Block cache: 2.6M entries (5.0GB)  hit rate: 89.4%
+Block cache: 169K entries (452MB)  hit rate: 81.7%
 Table cache: 7.1K entries (5.5MB)  hit rate: 100.0%
 Secondary cache: 0 entries (0B)  hit rate: 0.0%
 Snapshots: 0  earliest seq num: 0
-Table iters: 5000000
+Table iters: 0
 Filter utility: 95.9%
 Ingestions: 0  as flushable: 0 (0B in 0 tables)
+
+Cache Statistics:
+--------------------------------------------------------
+Caller		Hits	Misses	Calls	HitRate
+github.com/cockroachdb/pebble/sstable.(*Reader).readFilter	42490511	2347	42492858	1.00
+github.com/cockroachdb/pebble/sstable.(*Reader).readIndex	52230455	9425	52239880	1.00
+github.com/cockroachdb/pebble/sstable.(*Reader).readMetaindex	0	14210	14210	0.00
+github.com/cockroachdb/pebble/sstable.(*singleLevelIterator).loadBlock	105791	11372305	11478096	0.01
+github.com/cockroachdb/pebble/sstable.(*twoLevelIterator).loadIndex	1341078	10131804	11472882	0.12
