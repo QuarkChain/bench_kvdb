@@ -54,13 +54,13 @@ func randomWrite(tid, count, total int64, db *pebble.DB, wg *sync.WaitGroup) {
 	defer wg.Done()
 	st := time.Now()
 	key := make([]byte, keyLen)
+	value := make([]byte, valLen)
 	r := rand.New(rand.NewSource(time.Now().UnixNano() + tid))
 	sha := crypto.NewKeccakState()
 	for i := int64(0); i < count; i++ {
 		rv := r.Int63n(total)
 		binary.BigEndian.PutUint64(key[keyLen-8:keyLen], uint64(rv))
 		k := hash(sha, key)
-		value := make([]byte, valLen)
 		rand.Read(value)
 		_ = db.Set(k, value, nil)
 		if *logLevel >= 3 && i%1000000 == 0 && i > 0 {
@@ -79,17 +79,15 @@ func randomRead(tid int64, per, total int64, db *pebble.DB, wg *sync.WaitGroup) 
 	st := time.Now()
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	sha := crypto.NewKeccakState()
+	key := make([]byte, keyLen)
 
 	for i := int64(0); i < per; i++ {
 		rv := r.Int63n(total)
-		key := make([]byte, keyLen)
 		binary.BigEndian.PutUint64(key[keyLen-8:keyLen], uint64(rv))
 		k := hash(sha, key)
-		v, _, e := db.Get(k)
-		if *logLevel >= 3 && i%1000000 == 0 && i > 0 {
-			fmt.Printf("value for key %v is %v with error %v\n", common.Bytes2Hex(key), v, e)
-			ms := time.Since(st).Milliseconds()
-			fmt.Printf("thread %d used time %d ms, hps %d\n", tid, ms, i*1000/ms)
+		_, closer, _ := db.Get(k)
+		if closer != nil {
+			closer.Close()
 		}
 	}
 	if *logLevel >= 3 {
@@ -103,12 +101,12 @@ func batchWrite(tid, count int64, db *pebble.DB, wg *sync.WaitGroup) {
 	st := time.Now()
 	sha := crypto.NewKeccakState()
 	key := make([]byte, keyLen)
+	value := make([]byte, valLen)
 	batch := db.NewBatch()
 	for i := int64(0); i < count; i++ {
 		idx := tid*count + i
 		binary.BigEndian.PutUint64(key[keyLen-8:keyLen], uint64(idx))
 		k := hash(sha, key)
-		value := make([]byte, valLen)
 		rand.Read(value)
 		batch.Set(k, value, nil)
 		if i%1000 == 0 {
@@ -135,10 +133,10 @@ func seqWrite(tid, count int64, db *pebble.DB, wg *sync.WaitGroup) {
 	defer wg.Done()
 	st := time.Now()
 	key := make([]byte, keyLen)
+	value := make([]byte, valLen)
 	for i := int64(0); i < count; i++ {
 		idx := tid*count + i
 		binary.BigEndian.PutUint64(key[keyLen-8:keyLen], uint64(idx))
-		value := make([]byte, valLen)
 		rand.Read(value)
 		_ = db.Set(key, value, nil)
 		if *logLevel >= 3 && i%1000000 == 0 && i > 0 {
@@ -310,6 +308,7 @@ func main() {
 		fmt.Printf("\n%s", FormatCacheStats())
 		fmt.Printf("========= Warn up done ===============\n")
 
+		time.Sleep(5 * time.Second)
 		per = readCount / threads
 		m1 := db.Metrics()
 		start := time.Now()
