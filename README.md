@@ -37,7 +37,7 @@ LevelMultiplier int
 This output shows detailed table and space statistics of a Pebble DB instance generated using: `pebble db properties /path-to-db`.
 
 In this example, the database contains approximately `7.9 billion key-value` entries, stored across `14,840 SST` files 
-distributed over levels L0–L6. The total on-disk data size is about `440 GB`.
+distributed over levels L0–L6. The total on-disk data size is about `454 GB`.
 For each level, the report breaks down:
 - actual data block size (data)
 - index block size (index)
@@ -174,13 +174,13 @@ disk I/O, mainly due to the behavior of Bloom filters and cache residency.
     - This effectively removes most negative lookups from touching disk.
 
 2. Bloom Filters Excluding L6 Are Very Small
-    - Typical Bloom filter size (for all levels except L6) + Top-Index size `≈ 0.2%` of total data size
+    - Typical Bloom filter size (for all levels except L6) + Top-Index size (`≈ 0.18%` of total data size in the ethereum sample)
     - Bloom filters:
       - Are accessed on almost every `Get`
       - Are highly cache-friendly
       - Have extremely high reuse
     - Therefore, if:  
-      > Cache Size > ~0.2% of DB Size
+      > Cache Size > Bloom filter size without L6 + Top-Index size
     - then
       - Almost all Bloom filters remain resident in memory
       - Bloom filter lookups incur ~0 disk I/O
@@ -188,7 +188,7 @@ disk I/O, mainly due to the behavior of Bloom filters and cache residency.
       - Combined with index and data block reads, the total I/O per Get operation tends toward 2 (1 for index, 1 for data block in worst case)
 
 3. I/O Cost with Sufficient Cache
-    - Cache can hold: `Bloom filters` + `All Index blocks` + `Hot data blocks` > `1.5%` of total data size
+    - Cache can hold: `Bloom filters` + `All Index blocks` + `Hot data blocks` (`≈ 1.3%` of total data size in the ethereum sample)
     - Then for most Get operations:
       - Bloom filter → 0 I/O
       - Top-Index block → 0 I/O
@@ -197,15 +197,16 @@ disk I/O, mainly due to the behavior of Bloom filters and cache residency.
       - `≈ 1–2 disk I/Os per Get` operation → Effectively O(1)
       - If cache is even larger or hot data blocks have high hit rate, I/O per Get operation can drop below 1
 
-### Conclusion: PebbleDB Achieves O(1)-Like Read I/O Under Sufficient Cache
+### Hypothesis: PebbleDB Achieves O(1)-Like Read I/O Under Sufficient Cache
 Although the theoretical read complexity of PebbleDB is `O(log N)` due to the multi-level LSM structure, 
 this does not reflect real-world behavior. Thanks to: 
-- The extremely small size of Bloom filters excluding L6 (~0.2% of DB),
+- The small size of Bloom filters excluding L6,
 - Their very high access frequency,
 - And sufficient cache residency,
 
 most negative lookups are filtered in memory, and positive lookups usually require only one or two data blocks read.
 
+We hypothesize that
 > With sufficient cache, the real read I/O complexity of PebbleDB is effectively O(1) and converges to 1–2 I/O per Get operation.
 
 
@@ -216,8 +217,8 @@ To verify the previous conclusion, the benchmark will:
 1. Use **Pebble DB** (the same storage engine used by Geth).
 
 2. Test multiple cache configurations:
-    - `0.2%` and `0.4%` of DB size (Bloom-filter-dominant cache)
-    - `1.5%` and `2%` of DB size (Bloom filter + index + hot data cache)
+    - From 0.1% of the DB Size which is smaller than `Filter (without L6) + Top Index`
+    - To 3% of the DB Size which is larger than `Filter (without L6) + All Index`
 
 3. **Warm-up phase (to eliminate cold-cache effects):**
     - Before formal measurement, pre-read approximately **0.05% of the total key space**.
@@ -290,19 +291,124 @@ cd ./src/bench_pebble
 - Disk: SAMSUNG MZQL23T8HCLS-00A07 + RAID 0
 - OS: Ubuntu
 - Pebble Version: v1.1.5
+- Random Read Keys: 10M
+- Warn Up Keys: 0.05% of the Keys
+- Logs: [`src/bench_pebble/logs/`](https://github.com/QuarkChain/bench_kvdb/src/bench_pebble/logs/)
 
-### IO per GET operation
-Random-read benchmark using 10M random keys:
+### Dataset Overview
 
-| Metric                                        | 200M Keys | 2B Keys  | 20B Keys |
-|-----------------------------------------------|-----------|----------|----------|
-| DB Size                                       | 22 GB     | 226 GB   | 2.2 TB   |
-| Filter Size (Without L6)                      | 30 MB     | 273 MB   | 2.4 GB   |
-| Filter Size (With L6)                         | 238 MB    | 2.3 GB   | 23 GB    |
-| Index Size                                    | 176 MB    | 1.7 GB   | 18 GB    |
-| IO per GET (Bloom Only, 0.2% DB Size)         | 32        | 6.46     | 8.64     |
-| IO per GET (Bloom × 2, 0.4% DB Size)          | 1.02      | 1.94     | 5.14     |
-| IO per GET (Bloom + Index, 1.5 % DB Size)     | 1.02      | 1.04     | 1.08     |
-| IO per GET ((Bloom + Index) × 2, 3 % DB Size) | 1.02      | 1.04     | 1.08     |
+| Dataset                          | Small            | Medium         | Large           |
+|----------------------------------|------------------|----------------|-----------------|
+| Keys                             | 200M Keys        | 2B Keys        | 20B Keys        |
+| DB Size                          | 22 GB            | 224 GB         | 2.2 TB          |
+| File Count                       | 1418             | 7105           | 34647           |
+| Filter (without L6) + Top Index  | 32 MB (0.14%)    | 284 MB (0.12%) | 2.63 GB (0.12%) |
+| Filter (with L6)                 | 238 MB           | 2.3 GB         | 23 GB           |
+| All Index                        | 176 MB           | 1.7 GB         | 18 GB           |
+| Filter (without L6) + All Index  | 207 MB (0.91%)   | 2.0 GB (0.89%) | 20.4 GB (0.91%) |
 
-Logs: [`src/bench_pebble/logs/`](https://github.com/QuarkChain/bench_kvdb/src/bench_pebble/logs/)
+**Note**
+The actual percentage of these components depends on the database layout and compaction state.
+Therefore, conclusions below refer to component combinations rather than fixed % of DB size.
+
+#### Read I/O Cost per Get
+
+| Cache Configuration                 | Small | Medium | Large |
+| ----------------------------------- |-------|--------|-------|
+| **Filter (without L6) + Top Index** | 2.25  | 2.18   | 2.42  |
+| **0.2% DB Size**                    | 1.97  | 1.95   | 1.96  |
+| **Filter (without L6) + All Index** | 1.04  | 1.10   | 1.33  |
+| **1% DB Size**                      | 1.03  | 1.07   | 1.31  |
+
+![trend-io-per-get.png](images/trend-io-per-get.png)
+#### Filter Hit Rate
+| Dataset                             | Small  | Medium | Large |
+|-------------------------------------|--------|--------| ----- |
+| **Filter (without L6) + Top Index** | 98.5%  | 99.6%  | 98.9% |
+| **0.2% DB Size**                    | 100%   | 100%   | 100%  |
+| **Filter (without L6) + All Index** | 100%   | 100%   | 100%  |
+| **1% DB Size**                      | 100%   | 100%   | 100%  |
+
+#### Top Index Hit Rate
+| Dataset                             | Small | Medium | Large |
+|-------------------------------------|-------|--------|-------|
+| **Filter (without L6) + Top Index** | 96.4% | 97.8%  | 95.4% |
+| **0.2% DB Size**                    | 100%  | 100%   | 100%  |
+| **Filter (without L6) + All Index** | 100%  | 100%   | 100%  |
+| **1% DB Size**                      | 100%  | 100%   | 100%  |
+
+#### Index Block Hit Rate
+| Dataset                             | Small | Medium | Large |
+|-------------------------------------| ----- |--------| ----- |
+| **Filter (without L6) + Top Index** | 2.1%  | 1.5%   | 2.9%  |
+| **0.2% DB Size**                    | 9.1%  | 11.8%  | 13.7% |
+| **Filter (without L6) + All Index** | 98.2% | 93.1%  | 72.6% |
+| **1% DB Size**                      | 99.6% | 95.8%  | 73.4% |
+
+#### Data Block Hit Rate
+| Dataset                             | Small | Medium | Large |
+|-------------------------------------|-------|--------|-------|
+| **Filter (without L6) + Top Index** | 1.0%  | 0.7%   | 1.3%  |
+| **0.2% DB Size**                    | 1.2%  | 0.9%   | 1.6%  |
+| **Filter (without L6) + All Index** | 1.4%  | 1.1%   | 2.4%  |
+| **1% DB Size**                      | 1.5%  | 1.2%   | 2.4%  |
+
+![trend-index-hit-rate.png](images/trend-index-hit-rate.png)
+
+#### Overall Block Cache Hit Rate
+| Dataset                             | Small | Medium | Large |
+|-------------------------------------|-------|--------| ----- |
+| **Filter (without L6) + Top Index** | 77.3% | 79.6%  | 82.5% |
+| **0.2% DB Size**                    | 80.1% | 81.7%  | 85.8% |
+| **Filter (without L6) + All Index** | 89.5% | 89.7%  | 90.4% |
+| **1% DB Size**                      | 89.6% | 90.0%  | 90.5% |
+
+![trend-blockcache-hit-rate.png](images/trend-blockcache-hit-rate.png)
+
+#### Analysis
+- When cache ≥ `Filter (without L6) + Top Index`:
+  - Filter and Top Index hit rates rise rapidly with cache size and quickly converge toward 100%.
+  - Almost all negative lookups are resolved entirely in memory.
+  - I/O per Get drops rapidly as cache continues to increase from around ~2.2–2.4.
+- When cache ≥ `Filter (without L6) + All Index`: 
+  - I/O per Get converges toward ~1.0–1.3.
+  - The rate of further I/O reduction slows down significantly as cache continues to increase. 
+- Data block hit rate remains low and has **limited impact on overall I/O**.
+- The **dominant factor** for I/O reduction is **Bloom filter and index residency**, not data block caching.
+- These behaviors are **independent of total DB size** (22GB → 2.2TB).
+
+
+## Conclusion & Recommendations
+### Conclusion: PebbleDB Achieves O(1)-Like Read I/O Under Sufficient Cache
+
+Although the theoretical read complexity of PebbleDB is `O(log N)` due to its multi-level LSM structure,
+this complexity does not directly translate into real-world read I/O behavior.
+
+Experimental results show that:
+- Once `Filter (without L6) + Top Index` are resident in cache, almost all negative lookups are resolved entirely in memory, and I/O per Get rapidly drops to around ~2.
+- When `Filter (without L6) + All Index` fit in cache, I/O per Get further converges toward ~1.0–1.3, after which additional cache yields only marginal I/O reduction.
+
+These behaviors are consistent across database sizes ranging from **22GB to 2.2TB**.
+
+> With sufficient cache residency of Bloom filters and index blocks, the practical read I/O behavior of PebbleDB is 
+> effectively **O(1)** and consistently converges to **1–2 I/O operations per Get**.
+
+
+### Cache Configuration Recommendations
+
+1. Minimum cache for near-constant read performance  
+   Cache should be large enough to hold:
+   - `Filter (without L6) + Top Index`  
+     This already eliminates almost all negative lookups and reduces I/O per Get to ~2.
+
+2. Optimal cache for near-single-I/O reads  
+   Cache should be large enough to hold:
+   - `Filter (without L6) + All Index`  
+     At this point, I/O per Get consistently converges to ~1.0–1.3 even at tens of billions of keys.
+
+3. Data block caching is optional for read I/O optimization  
+   Since data block hit rate remains low across all configurations, allocating cache primarily to:
+   - Bloom filters
+   - Index blocks  
+     yields the highest return on memory investment for read-heavy workloads.
+
