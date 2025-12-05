@@ -1,7 +1,7 @@
 # bench_kvdb
 
-A benchmarking tool designed to evaluate random read performance of traditional KV databases such as **PebbleDB**, 
-specifically focusing on **IO operations per key read (I/O per GET operation)**.
+A benchmarking tool designed to evaluate random read performance of traditional KV databases such as **Pebble**, 
+specifically focusing on **IOs operations per key read (I/O per GET operation)**.
 
 This project originated from research around the new trie database design proposed in the Base TrieDB 
 repository (https://github.com/base/triedb/), the following design assumption is stated:
@@ -15,65 +15,32 @@ repository (https://github.com/base/triedb/), the following design assumption is
 
 ## Why This Project Exists
 
-Many blockchain research discussions assume that KV DB (like pebble DB) requires approximately `O(log N)` work to perform a key lookup.
+Many blockchain research discussions assume that KV DB (like pebble) requires approximately `O(log N)` IOs to perform a key lookup.
 
 However, this assumption may be **incorrect** in the actual scenarios of blockchain.
 
-### Why is Assumed to Have `log(N)` Lookup Cost? 
+### Pebble’s Level Structure 
 
-Take pebble as an example, the LSM-tree uses a level-based storage model. The base level (LBase or higher) is configured with a maximum 
-size of 64 MB, and each subsequent level increases in capacity by a factor of 10, as shown in the pebble code below. 
-
-```
-https://github.com/cockroachdb/pebble/blob/master/options.go#L1536
-o.LBaseMaxBytes = 64 << 20 // 64 MB
-
-https://github.com/cockroachdb/pebble/blob/master/options.go#L736
-// LevelMultiplier configures the size multiplier used to determine the
-// desired size of each level of the LSM. Defaults to 10.
-LevelMultiplier int
-```
+Pebble uses a level-based LSM design where the base level (LBase) is capped at 64 MB, and each subsequent level increases 
+in capacity by a factor of 10. 
 
 ![ethereum.png](./images/ethereum.png)
-This output shows detailed table and space statistics of a Pebble DB instance generated using: `pebble db properties /path-to-db`.
 
-In this example, the database contains approximately `7.9 billion key-value` entries, stored across `14,840 SST` files 
-distributed over levels L2–L6. The total on-disk data size is about `454 GB`.
-For each level, the report breaks down:
-- actual data block size (data)
-- index block size (index)
-- Bloom filter block size (filter)
-- and raw key/value sizes.
+The example shown above contains 7.9 B key–value pairs stored across `14,840 SST` files distributed over levels L2–L6, 
+with most data concentrated in L6 (≈393 GB). Intermediate levels follow the expected ~10× growth pattern, 
+though Pebble treats this as a soft target rather than a strict limit.
 
-From the size distribution:
-- The majority of data resides in L6 (≈ 393 GB), which is expected for a healthy LSM-tree.
-- Intermediate levels (L2–L5) exhibit an approximately 10× growth pattern, consistent with the typical LSM-tree level 
-sizing strategy, though this is a soft target rather than a strict limit in Pebble.
+Pebble also maintains a dynamic **LBase**, which is the base level currently selected by the compaction scheduler 
+as the primary target for L0 compactions. LBase selection depends on level sizes and compaction pressure. 
+In this snapshot, L1 is empty and L2 holds only ~54 MB, so **L2 is effectively the current LBase**.
 
-**LBase Explanation**
+### SST File Structure and Usage in Pebble
 
-In Pebble, **LBase is the base level currently selected by the compaction scheduler as the primary target for L0 compactions**.
-
-LBase is **dynamic** and may change over time based on:
-
-- compaction scores of each level
-- write and flush pressure
-- compaction backlog
-
-In this snapshot:
-
-- L1 is empty
-- L2 contains about 54 MB of data
-
-Therefore, **L2 is very likely acting as the current LBase**, meaning new L0 compactions will most likely target L2 directly.
-
-### SST File Structure and Usage in PebbleDB
-
-SST (Sorted String Table) is the core storage unit in PebbleDB. Each file contains multiple sections, each serving a specific purpose:
+SST (Sorted String Table) is the core storage unit in Pebble. Each file contains multiple sections, each serving a specific purpose:
 
 ```
 +-------------------+
-|    Data Blocks    |  <- Actual key-value entries, read when Bloom filter/index indicate key exists
+|    Data Blocks    |  <- Actual key-value entries, read when Bloom filter/index indicates key exists
 +-------------------+
 |   Filter Block    |  <- Bloom filter, quickly checks if a key may exist, avoids unnecessary reads
 +-------------------+
@@ -89,7 +56,7 @@ SST (Sorted String Table) is the core storage unit in PebbleDB. Each file contai
 +-------------------+
 ```
 
-### Read Path in PebbleDB
+### Read Path in Pebble
 A typical Get (key lookup) proceeds as follows: 
 1. Check MemTable / Immutable MemTables (in memory - no I/O)
 
@@ -105,7 +72,7 @@ A typical Get (key lookup) proceeds as follows:
     - Read the Top-Index at iterator init
       - Small structure at the end of each SST providing offsets to index blocks.
       - Usually cached; if not, 1 disk read. (~0 I/O)
-    - Bloom Filter check
+    - **Bloom Filter check**
       - Table-level filter for the whole SST
       - If cached → no I/O
       - If not cached → 1 disk read to load the filter block
@@ -147,9 +114,9 @@ In simple terms:
    d) Data block → read value
 ```
 
-### Expected I/O Behavior
+### Theoretical I/O Behavior
 
-If the database has N non-empty levels (as shown in the example above. L2, L3, L4, L5, L6 → N=5), 
+If the database has N non-empty levels (as shown in the example above, L2, L3, L4, L5, L6 → N=5), 
 The theoretical worst-case disk I/O count per Get operation is:
 
 $$
@@ -171,14 +138,14 @@ This reflects the fact that an LSM tree has logarithmic fan-out across levels.
 In real blockchain workloads (e.g., Geth, Optimism), the theoretical `O(log N)` bound significantly overestimates real 
 disk I/O, mainly due to the behavior of Bloom filters and cache residency.
 1. Bloom Filters Prevent Most Useless I/O
-    - Bloom filters are checked before index and data blocks.
+    - Bloom filters are checked before the index and data blocks.
     - If the filter says “key does not exist”, the SST is skipped with:
       - No index block read
       - No data block read
     - This effectively removes most negative lookups from touching disk.
 
 2. Bloom Filters Excluding L6 + Top-Index Are Small
-    - Typical Bloom filter size (for all levels except L6) + Top-Index size (`≈ 0.18%` of total data size in the ethereum sample)
+    - Typical Bloom filter size (for all levels except L6) + Top-Index size (`≈ 0.18%` of total data size in the Ethereum sample)
     - Bloom filters and Top-Index:
       - Are accessed on almost every `Get`
       - Are highly cache-friendly
@@ -192,7 +159,7 @@ disk I/O, mainly due to the behavior of Bloom filters and cache residency.
       - Combined with index and data block reads, the total I/O per Get operation tends toward 2 (1 for index, 1 for data block)
 
 3. I/O Cost with Sufficient Cache
-    - Cache can hold: `Bloom filters` + `All Index blocks` (`≈ 1.3%` of total data size in the ethereum sample)
+    - Cache can hold: `Bloom filters` + `All Index blocks` (`≈ 1.3%` of total data size in the Ethereum sample)
     - Then for most Get operations:
       - Bloom filter → 0 I/O
       - Top-Index block → 0 I/O
@@ -201,35 +168,35 @@ disk I/O, mainly due to the behavior of Bloom filters and cache residency.
       - `≈ 1–2 I/Os per Get` operation → Effectively O(1)
       - If the cache is even larger and hot data blocks are cached and have a high hit rate, I/O per Get operation can drop below 1
 
-### Hypothesis: PebbleDB Achieves O(1)-Like Read I/O Under Sufficient Cache
-Although the theoretical read complexity of PebbleDB is `O(log N)` due to the multi-level LSM structure, 
-this does not reflect real-world behavior. Thanks to: 
-- The small size of Bloom filters excluding L6,
+### Hypothesis: Pebble Achieves O(1)-Like Read I/O Under Sufficient Cache
+Although the theoretical read complexity of Pebble is `O(log N)` due to the multi-level LSM structure, 
+This does not reflect real-world behavior. Thanks to: 
+- The small size of Bloom filters, excluding L6,
 - Their very high access frequency,
 - And sufficient cache residency,
 
-most negative lookups are filtered out in memory, and positive lookups usually require only one or two data blocks read.
+Most negative lookups are filtered out in memory, and positive lookups usually require only one or two data blocks read.
 
 We hypothesize that
-> With sufficient cache, the real read I/O complexity of PebbleDB is effectively O(1) and converges to 1–2 I/O per Get operation.
+> With sufficient cache, the real read I/O complexity of Pebble is effectively O(1) and converges to 1–2 I/O per Get operation.
 
 
 ### Benchmark Plan: Validating the O(1)-Like Read Behavior
 
 To verify the previous hypothesis, the benchmark will:
 
-1. Use **Pebble DB** (the same storage engine used by Geth).
+1. Use **Pebble** (the same storage engine used by Geth).
 
 2. Test multiple cache configurations:
-    - From 0.1% of the DB Size which is smaller than `Filter (without L6) + Top Index`
-    - To 3% of the DB Size which is larger than `Filter (without L6) + All Index`
+    - From 0.1% of the DB Size, which is smaller than `Filter (without L6) + Top Index`
+    - To 3% of the DB Size, which is larger than `Filter (without L6) + All Index`
 
 3. **Warm-up phase (to eliminate cold-cache effects):**
     - Before formal measurement, pre-read approximately **0.05% of the total key space**.
     - Purpose:
-        - Populate Bloom filters, Top-index blocks and hot index blocks into cache,
+        - Populate Bloom filters, Top-index blocks, and hot index blocks into cache,
         - Ensure the system reaches a **steady-state cache behavior**.
-    - Only after warm-up completes will formal statistics be collected.
+    - Only after the warm-up completes will formal statistics be collected.
 
 4. Measure **storage I/O only**, not response latency.
 
@@ -260,15 +227,15 @@ go build
 ### How to Run
 
 **Usage：**
-- --i：init insert data, default value is `false`
+- --i: init insert data, default value is `false`
 - --b: batch insert, default value is `true`
 - --c: cache size in MB
-- --T：total number of keys count
+- --T: total number of keys count
 - --t: threads count
-- --w：random update count
-- --r：random read count
-- --p：db path
-- --l：log level
+- --w: random update count
+- --r: random read count
+- --p: db path
+- --l: log level
 
 
 ```bash
@@ -311,7 +278,7 @@ cd ./src/bench_pebble
 **Note:**
 
 The actual percentage of these components depends on the database layout and compaction state.
-Therefore, conclusions below refer to component combinations rather than fixed % of DB size.
+Therefore, the conclusions below refer to component combinations rather than a fixed % of DB size.
 
 #### Read I/O Cost per Get
 
@@ -381,37 +348,31 @@ Therefore, conclusions below refer to component combinations rather than fixed %
 
 
 ## Conclusion & Recommendations
-### Conclusion: PebbleDB Achieves O(1)-Like Read I/O Under Sufficient Cache
+### Conclusion: Pebble Achieves O(1)-Like Read I/O Under Sufficient Cache
 
-Although the theoretical read complexity of PebbleDB is `O(log N)` due to its multi-level LSM structure,
+Although the theoretical read complexity of Pebble is `O(log N)` due to its multi-level LSM structure, 
 this complexity does not directly translate into real-world read I/O behavior.
 
 Experimental results show that:
-- Once `Filter (without L6) + Top Index` are resident in cache, almost all negative lookups are resolved entirely in memory, and I/O per Get rapidly drops to ~2 or less.
-- When `Filter (without L6) + All Index` fit in cache, I/O per Get further converges toward ~1.0–1.3, after which additional cache yields only marginal I/O reduction.
+- Once `Filter (without L6) + Top Index` is resident in cache, almost all negative lookups are resolved entirely in memory, and I/O per Get rapidly drops to ~2 or less.
+- When `Filter (without L6) + All Index` fits in cache, I/O per Get further converges toward ~1.0–1.3, after which additional cache yields only marginal I/O reduction.
 
 These behaviors are consistent across database sizes ranging from **22GB to 2.2TB**.
 
-> With sufficient cache residency of Bloom filters and index blocks, the practical read I/O behavior of PebbleDB is 
+> With sufficient cache residency of Bloom filters and index blocks, the practical read I/O behavior of Pebble is 
 > effectively **O(1)** and consistently converges to **1–2 I/O per Get operation**.
 
 
 ### Cache Configuration Recommendations
 
 1. Minimum cache for near-constant read performance  
-   Cache should be large enough to hold:
+   The cache should be large enough to hold:
    - `Filter (without L6) + Top Index`  
      This already eliminates almost all negative lookups and reduces I/O per Get to ~2.
 
 2. Optimal cache for near-single-I/O reads  
-   Cache should be large enough to hold:
+   The cache should be large enough to hold:
    - `Filter (without L6) + All Index`  
      At this point, I/O per Get consistently converges to ~1.0–1.3 even at tens of billions of keys.
 
 3. Data block caching is optional for read I/O optimization  
-   Since data block hit rate remains low across all configurations, allocating cache primarily to:
-   - Bloom filters
-   - Top-Index blocks
-   - Index blocks  
-     yields the highest return on memory investment for read-heavy workloads.
-
