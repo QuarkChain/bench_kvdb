@@ -116,16 +116,16 @@ In simple terms:
 
 ### Theoretical I/O Behavior
 
-If the database has N non-empty levels (as shown in the example above, L2, L3, L4, L5, L6 → N=5), 
+If the database has X non-empty levels (as shown in the example above, L2, L3, L4, L5, L6 → X=5), 
 The theoretical worst-case disk I/O count per Get operation is:
 
 $$
-\text{I/O} \approx (N - 1) * 2 + 3
+\text{I/O} \approx (X - 1) * 2 + 3
 $$
 
 | Term    | Meaning                                    |
 |---------|--------------------------------------------|
-| (N - 1) | All levels except L6                       |
+| (X - 1) | All levels except L6                       |
 | * 2     | Top Index block + Filter block             |
 | + 3     | Top Index block + Index block + Data block |
 
