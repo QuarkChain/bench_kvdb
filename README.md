@@ -3,10 +3,10 @@
 A benchmarking tool designed to evaluate random read performance of traditional KV databases such as **Pebble**, 
 specifically focusing on **IOs operations per key read (I/O per GET operation)**.
 
-This project originated from research around the new trie database design proposed in the Base TrieDB 
-repository (https://github.com/base/triedb/), the following design assumption is stated:
+This project originated from research around the new trie database design proposed in the 
+[Base/TrieDB](https://github.com/base/triedb/) repository , the following design assumption is stated:
 
-> While traversing the trie from Root to Leaf in order to read a single value is predicted to scale logarithmically  
+> While traversing the trie from Root to Leaf in order to read a single value is predicted to scale logarithmically 
 > with the size of the trie (`O(log N)`), this is also the cost associated with accessing each item stored in a 
 > Key/Value database. In effect, the database must be fully searched for each independent trie node, and
 > this work must be repeated until a Leaf node is found, resulting in a true scaling factor of O(log N * log N).
