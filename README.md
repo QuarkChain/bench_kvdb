@@ -1,5 +1,20 @@
 # bench_kvdb
 
+### Abstract
+
+Modern blockchain systems rely on large-scale key-value (KV) databases to serve highly random state accesses at billions of keys. While the theoretical read complexity of LSM-based storage engines such as Pebble is often described as `O(log N)`, this model does not accurately reflect real disk I/O behavior under realistic cache conditions.
+
+This work presents an extensive empirical study on the **true disk I/O cost of random KV lookups at blockchain scale**, using Pebble as the underlying storage engine. We benchmark databases ranging from **22 GB to 2.2 TB** (200M to 20B keys) under multiple cache configurations that selectively fit Bloom filters, top indexes, and full index blocks into memory.
+
+Our experiments show that:
+- Once **Bloom filters (excluding LLast) and Top-Index blocks** fit in cache, **most negative lookups incur zero disk I/O**, and the I/O per Get rapidly drops to ~2.
+- When **all index blocks also fit in cache**, the I/O per Get further converges to **~1.0–1.3**, largely independent of total database size.
+- Data block caching has only a secondary effect on overall I/O.
+
+These results demonstrate that, under sufficient cache, **Pebble exhibits effectively O(1) disk I/O behavior for random reads**, challenging the common assumption that each KV lookup inherently costs `O(log N)` physical I/Os. This has direct implications for the performance modeling and design of blockchain trie databases and execution-layer storage systems.
+
+---
+
 ### Overview
 
 `bench_kvdb` is a benchmarking tool for measuring the **disk I/O cost of random key lookups** in key-value databases 
