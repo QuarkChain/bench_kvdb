@@ -108,62 +108,64 @@ SST (Sorted String Table) is the core storage unit in Pebble. Each file contains
 ```
 
 ### Read Path in Pebble
-A typical Get (key lookup) proceeds as follows: 
-1. Check MemTable / Immutable MemTables (in memory - no I/O)
+A typical Get (key lookup) proceeds in simple terms as follows: 
+```
+1. Check MemTable / Immutable MemTables (in memory)
+   a) Return value if found
+2. Use MANIFEST to find candidate SST files (in memory)
+3. For each SST:
+   a) Load Top-level index at init → find index block after filter check
+   b) Table-level Bloom filter check → skip SST if key absent
+   c) Index block → locate data block
+   d) Data block → read value and retrun
+```
+#### Steps Explanation
+1. **MemTable / Immutable MemTables (memory only)**
+    - If key exists here, return immediately.
 
-2. Consult MANIFEST metadata (in memory - no I/O)
-    - Used to determine candidate SST files.
-    - Already loaded in memory after DB open.
+2. **Consult MANIFEST Metadata (memory only)**
+    - Determines which SSTs *might* contain the key.
+    - MANIFEST contents are fully loaded at DB open → 0 I/O.
 
 3. Search SST files (all levels)
-    - L0: Multiple SSTs may need to be checked due to overlapping key ranges.
-    - `LBase` and higher: SSTs have non-overlapping key ranges; at most one SST per level is queried.
-      
+    - **L0**: Files may overlap → several SSTs may be probed.
+    - **`LBase` and higher**: Non-overlapping → at most **one SST per level**.
+
    For each SST file
-    - Read the Top-Index at iterator init
-      - Small structure at the end of each SST providing offsets to index blocks.
-      - Usually cached; if not, 1 disk read. (~0 I/O)
-    - **Bloom Filter check**
-      - Table-level filter for the whole SST
-      - If cached → no I/O
-      - If not cached → 1 disk read to load the filter block
-      - A high Bloom filter hit rate is crucial:
-        If the filter says the key does not exist, the SST can be skipped entirely — meaning the lookup
-        cost for a non-existing key is almost zero I/O.
-    - If the Bloom Filter indicates the key may exist:
-      - Index Block lookup → 0–1 I/O depending on cache state
-      - Data Block read → 0–1 I/O depending on cache state
+    - **a) Top-Index load at init**
+      - Small structure at end of SST.
+      - Usually cached; otherwise 1 I/O. (~0 I/O)
+
+    - **b) Table-level Bloom Filter check**
+      - Usually cached; otherwise 1 I/O. (~0 I/O)
+      - Very important for negative lookups:
+        - If filter says key does not exist, the entire SST is skipped.
+        - Non-existing-key lookup becomes almost zero I/O.
+    - **c) Index Block lookup (only if filter says “may exist”)** 
+      - cached or 1 I/O
+    - **d) Data block read (only after Index Block lookup)**
+      - cached or 1 I/O
       - If found → return value.
-    - Special optimization for the last level (LLast)
-      - LLast intentionally does not use Bloom filters.
-      - The lookup directly uses the index block to locate the data block.
-      - Reason for this optimization:
-        - LLast contains the largest portion of the database.
-        - The Bloom filter for LLast would be very large, with: 
-          - Low cache efficiency
-          - High memory cost
-          - Diminishing filtering benefit (since most keys eventually fall into LLast)
-        - The index already provides efficient block-level pruning.
-      - Therefore:
-        - Skipping the LLast Bloom filter saves cache space
-        - Avoids one extra disk read
-        - Reduces total I/O and memory pressure
 
-4. Continue downward through levels
-    - Stop when the key is found, 
-    - Or return `NotFound` after all candidate SSTs have been checked.
+#### Special Optimization for the Last Level (LLast)
+Pebble intentionally disables Bloom filters for LLast.
+The lookup directly uses the index block to locate the data block.
 
+**Reason:**
+- LLast contains the **majority** of the DB.
+- Its Bloom filter would be:
+  - Very large
+  - Inefficient to cache
+  - Expensive in memory
+  - Provide limited benefit (most keys end up in LLast)
 
-In simple terms:
-```
-1. Check MemTable / Immutable MemTables
-2. Check MANIFEST → candidate SSTs
-3. For each SST:
-   a) Table-level Bloom filter → skip SST if key absent
-   b) Top-level index → find index block
-   c) Index block → locate data block
-   d) Data block → read value
-```
+**Instead:**
+- The block index provides efficient block-level pruning and is used to locate the data block.
+- This:
+  - Saves cache space
+  - Avoids one extra filter read
+  - Reduces memory pressure and total I/O
+
 
 ### Theoretical I/O Behavior
 
@@ -331,7 +333,95 @@ cd ./src/bench_pebble
 The actual percentage of these components depends on the database layout and compaction state.
 Therefore, the conclusions below refer to component combinations rather than a fixed % of DB size.
 
-#### Read I/O Cost per Get
+
+### Filter Hit Rate & Top Index Hit Rate
+
+| Dataset                                | Small (Filter) | Medium (Filter) | Large (Filter) | Small (TopIdx) | Medium (TopIdx) | Large (TopIdx) |
+|----------------------------------------|----------------|------------------|----------------|----------------|------------------|----------------|
+| **Filter (without LLast) + Top Index** | 98.5%          | 99.6%            | 98.9%          | 96.4%          | 97.8%            | 95.4%          |
+| **0.2% DB Size**                       | 100%           | 100%             | 100%           | 100%           | 100%             | 100%           |
+| **Filter (without LLast) + All Index** | 100%           | 100%             | 100%           | 100%           | 100%             | 100%           |
+| **1% DB Size**                         | 100%           | 100%             | 100%           | 100%           | 100%             | 100%           |
+
+**Analysis.**  
+Once the cache reaches the capacity of **Filter + Top Index**, both Bloom filter and Top Index hit rates quickly approach **100%**.  
+This implies that **almost all negative lookups are resolved entirely in memory**, eliminating unnecessary disk I/Os at the upper levels of the LSM-tree.
+
+---
+
+### Index Block Hit Rate
+
+| Dataset                                | Small | Medium | Large |
+|----------------------------------------|-------|--------|-------|
+| **Filter (without LLast) + Top Index** | 2.1%  | 1.5%   | 2.9%  |
+| **0.2% DB Size**                       | 9.1%  | 11.8%  | 13.7% |
+| **Filter (without LLast) + All Index** | 98.2% | 93.1%  | 72.6% |
+| **1% DB Size**                         | 99.6% | 95.8%  | 73.4% |
+
+![trend-index-hit-rate.png](images/trend-index-hit-rate.png)
+
+**Analysis.**  
+As the cache grows, the index block hit rate exhibits **three clear phases**:
+
+1. **Up to `Filter (without LLast) + Top Index`:**  
+   Index blocks are barely cached, with hit rates staying at only **~1%–3%**.
+
+2. **Between `Filter (without LLast) + Top Index` and `Filter (without LLast) + All Index`:**  
+   Middle-level index blocks rapidly become cache-resident, and the hit rate **rises sharply**.
+
+3. **Beyond `Filter (without LLast) + All Index`:**  
+   Most index blocks reside in memory, and the hit rate reaches a **high plateau (~70%–99%)** with only marginal further gains.
+
+Overall, the index hit rate transitions **directly from near-zero to near-full residency** once all index blocks fit in cache.
+
+
+---
+
+### Data Block Hit Rate
+
+| Dataset                                | Small | Medium | Large |
+|----------------------------------------|-------|--------|-------|
+| **Filter (without LLast) + Top Index** | 1.0%  | 0.7%   | 1.3%  |
+| **0.2% DB Size**                       | 1.2%  | 0.9%   | 1.6%  |
+| **Filter (without LLast) + All Index** | 1.4%  | 1.1%   | 2.4%  |
+| **1% DB Size**                         | 1.5%  | 1.2%   | 2.4%  |
+
+**Analysis.**  
+Data block hit rate remains consistently below **3%** across all cache configurations and dataset sizes.  
+Thus, **data block caching contributes little to the observed I/O reduction** in random-read workloads.
+
+---
+
+### Overall Block Cache Hit Rate
+
+| Dataset                                | Small | Medium | Large |
+|----------------------------------------|-------|--------|-------|
+| **Filter (without LLast) + Top Index** | 77.3% | 79.6%  | 82.5% |
+| **0.2% DB Size**                       | 80.1% | 81.7%  | 85.8% |
+| **Filter (without LLast) + All Index** | 89.5% | 89.7%  | 90.4% |
+| **1% DB Size**                         | 89.6% | 90.0%  | 90.5% |
+
+![trend-blockcache-hit-rate.png](images/trend-blockcache-hit-rate.png)
+
+**Analysis.**  
+As the cache grows, the overall block cache hit rate increases in **three distinct phases**:
+1. Up to `Filter (without LLast) + Top Index`:
+
+   Hit rate rises steeply, driven almost entirely by the rapid **in-memory residency of Bloom filters and Top Index**.
+
+2. Between `Filter (without LLast) + Top Index` and `Filter (without LLast) + All Index`:
+
+   Hit rate continues to grow as index blocks become resident, but at a **slower slope**.
+
+3. Beyond `Filter (without LLast) + All Index`:
+
+   Hit rate **stabilizes**, since data block caching contributes little under random read workloads.
+
+Overall, the hit rate trend is **dominated by filter and index residency**, not by data blocks.
+
+---
+
+### Read I/O Cost per Get
 
 | Cache Configuration                    | Small | Medium | Large |
 |----------------------------------------|-------|--------|-------|
@@ -341,61 +431,52 @@ Therefore, the conclusions below refer to component combinations rather than a f
 | **1% DB Size**                         | 1.03  | 1.07   | 1.31  |
 
 ![trend-io-per-get.png](images/trend-io-per-get.png)
-#### Filter Hit Rate
-| Dataset                                | Small  | Medium | Large |
-|----------------------------------------|--------|--------| ----- |
-| **Filter (without LLast) + Top Index** | 98.5%  | 99.6%  | 98.9% |
-| **0.2% DB Size**                       | 100%   | 100%   | 100%  |
-| **Filter (without LLast) + All Index** | 100%   | 100%   | 100%  |
-| **1% DB Size**                         | 100%   | 100%   | 100%  |
 
-#### Top Index Hit Rate
-| Dataset                                | Small | Medium | Large |
-|----------------------------------------|-------|--------|-------|
-| **Filter (without LLast) + Top Index** | 96.4% | 97.8%  | 95.4% |
-| **0.2% DB Size**                       | 100%  | 100%   | 100%  |
-| **Filter (without LLast) + All Index** | 100%  | 100%   | 100%  |
-| **1% DB Size**                         | 100%  | 100%   | 100%  |
+**Analysis.**  
+As the cache grows, the disk **I/Os per Get** show **three clear phases**:
 
-#### Index Block Hit Rate
-| Dataset                                | Small | Medium | Large |
-|----------------------------------------| ----- |--------| ----- |
-| **Filter (without LLast) + Top Index** | 2.1%  | 1.5%   | 2.9%  |
-| **0.2% DB Size**                       | 9.1%  | 11.8%  | 13.7% |
-| **Filter (without LLast) + All Index** | 98.2% | 93.1%  | 72.6% |
-| **1% DB Size**                         | 99.6% | 95.8%  | 73.4% |
+1. **Up to `Filter (without LLast) + Top Index`:**  
+   I/Os per Get drop quickly to **~2.2–2.4**, as Bloom filters and Top Index become memory-resident, forming an **O(1)-like lookup regime**.
 
-![trend-index-hit-rate.png](images/trend-index-hit-rate.png)
+2. **Between `Filter (without LLast) + Top Index` and `Filter (without LLast) + All Index`:**  
+   With more index blocks entering the cache, I/Os per Get **fall sharply from ~2.3 toward ~1.0**, representing the **main I/O reduction phase**.
 
-#### Data Block Hit Rate
-| Dataset                                | Small | Medium | Large |
-|----------------------------------------|-------|--------|-------|
-| **Filter (without LLast) + Top Index** | 1.0%  | 0.7%   | 1.3%  |
-| **0.2% DB Size**                       | 1.2%  | 0.9%   | 1.6%  |
-| **Filter (without LLast) + All Index** | 1.4%  | 1.1%   | 2.4%  |
-| **1% DB Size**                         | 1.5%  | 1.2%   | 2.4%  |
+3. **Beyond `Filter (without LLast) + All Index`:**  
+   I/Os per Get reach a **near-minimal plateau (~1.0–1.3)**, and further cache expansion yields **only marginal gains**.
 
-#### Overall Block Cache Hit Rate
-| Dataset                                | Small | Medium | Large |
-|----------------------------------------|-------|--------| ----- |
-| **Filter (without LLast) + Top Index** | 77.3% | 79.6%  | 82.5% |
-| **0.2% DB Size**                       | 80.1% | 81.7%  | 85.8% |
-| **Filter (without LLast) + All Index** | 89.5% | 89.7%  | 90.4% |
-| **1% DB Size**                         | 89.6% | 90.0%  | 90.5% |
+Overall, random-read I/O is **primarily governed by Bloom filter and index residency**, and remains **stable across dataset sizes**.
 
-![trend-blockcache-hit-rate.png](images/trend-blockcache-hit-rate.png)
+---
 
-#### Analysis
-- When cache ≥ `Filter (without LLast) + Top Index`:
-  - Filter and Top Index hit rates rise rapidly with cache size and quickly converge toward 100%.
-  - Almost all negative lookups are resolved entirely in memory.
-  - I/O per Get drops rapidly as cache continues to increase from around ~2.2–2.4.
-- When cache ≥ `Filter (without LLast) + All Index`: 
-  - I/O per Get converges toward ~1.0–1.3.
-  - The rate of further I/O reduction slows down significantly as cache continues to increase. 
-- Data block hit rate remains low and has **limited impact on overall I/O**.
-- The **dominant factor** for I/O reduction is **Bloom filter and index residency**, not data block caching.
-- These behaviors are **independent of total DB size** (22GB → 2.2TB).
+### Key Observations
+
+- **`Filter (without LLast) + Top Index` marks the first inflection point.**  
+  Once the cache reaches this level:
+    - Bloom filter and Top Index hit rates rapidly approach **~100%**.
+    - Most **negative lookups are resolved entirely in memory**.
+    - Random-read **I/Os per Get stabilize at ~2.2–2.4**, indicating entry into the first **O(1)-like lookup regime**.
+
+- **Between `Filter (without LLast) + Top Index` and `Filter (without LLast) + All Index` lies the primary I/O reduction phase.**  
+  In this transition region:
+    - A rapidly increasing fraction of **index blocks becomes cache-resident**.
+    - Index block hit rate rises sharply from **~1–10% to ~70%–99%**.
+    - **I/Os per Get drop steeply from ~2.3 toward ~1.0–1.3**.
+    - This region culminates in the **second inflection point**, where most index blocks become memory-resident.
+
+- **`Filter (without LLast) + All Index` represents the second inflection point and the onset of diminishing returns.**  
+  Beyond this point:
+    - Random-read **I/Os per Get approach the tight lower bound** (approximately one data-block access).
+    - Further cache growth yields **only marginal additional I/O reduction**.
+
+- **Data block caching contributes negligibly under random-read workloads.**  
+  Across all cache configurations and dataset sizes:
+    - Data block hit rate remains consistently **very low**.
+    - Hence, the observed I/O reduction is **almost entirely driven by filter and index residency**, not data blocks.
+
+- **Overall, random-read behavior is governed by filter and index caching and is largely independent of database size.**  
+  Across databases ranging from **22 GB to 2.2 TB**:
+    - Both **hit-rate evolution and I/Os-per-Get curves remain highly consistent**.
+    - The resulting **O(1)-like random-read behavior is stable across scales**.
 
 
 ## Conclusion & Recommendations
