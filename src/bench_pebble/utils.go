@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/v2/sstable/block"
 	"sort"
 	"strings"
 )
@@ -64,8 +65,8 @@ import (
 //		countCacheHitsDetail()
 
 func FormatCacheStats() string {
-	keys := make([]string, 0, len(sstable.CacheCallsDetail))
-	for k := range sstable.CacheCallsDetail {
+	keys := make([]string, 0, len(block.CacheCallsDetail))
+	for k := range block.CacheCallsDetail {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)

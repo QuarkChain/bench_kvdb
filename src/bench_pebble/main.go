@@ -5,12 +5,11 @@ import (
 	"flag"
 	"fmt"
 	"math/rand"
-	"runtime"
 	"sync"
 	"time"
 
-	"github.com/cockroachdb/pebble"
-	"github.com/cockroachdb/pebble/bloom"
+	"github.com/cockroachdb/pebble/v2"
+	"github.com/cockroachdb/pebble/v2/bloom"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -85,9 +84,20 @@ func randomRead(tid int64, per, total int64, db *pebble.DB, wg *sync.WaitGroup) 
 		rv := r.Int63n(total)
 		binary.BigEndian.PutUint64(key[keyLen-8:keyLen], uint64(rv))
 		k := hash(sha, key)
-		_, closer, _ := db.Get(k)
-		if closer != nil {
-			closer.Close()
+		//_, closer, _ := db.Get(k)
+		//if closer != nil {
+		//	closer.Close()
+		//}
+		dat, closer, err := db.Get(k)
+		if err != nil {
+			fmt.Printf("get key %s fail with err %v\n", common.Bytes2Hex(k), err)
+			continue
+		}
+		fmt.Printf("==================== %s ================\n", common.Bytes2Hex(k))
+		ret := make([]byte, len(dat))
+		copy(ret, dat)
+		if err = closer.Close(); err != nil {
+			continue
 		}
 	}
 	if *logLevel >= 3 {
@@ -208,18 +218,18 @@ func NewDB(file string, cache int, handles int, namespace string, readonly bool)
 
 		// The default compaction concurrency(1 thread),
 		// Here use all available CPUs for faster compaction.
-		MaxConcurrentCompactions: runtime.NumCPU,
+		//MaxConcurrentCompactions: runtime.NumCPU,
 
 		// Per-level options. Options for at least one level must be specified. The
 		// options for the last level are used for all subsequent levels.
-		Levels: []pebble.LevelOptions{
-			{TargetFileSize: 2 * 1024 * 1024, FilterPolicy: bloom.FilterPolicy(10)},
-			{TargetFileSize: 4 * 1024 * 1024, FilterPolicy: bloom.FilterPolicy(10)},
-			{TargetFileSize: 8 * 1024 * 1024, FilterPolicy: bloom.FilterPolicy(10)},
-			{TargetFileSize: 16 * 1024 * 1024, FilterPolicy: bloom.FilterPolicy(10)},
-			{TargetFileSize: 32 * 1024 * 1024, FilterPolicy: bloom.FilterPolicy(10)},
-			{TargetFileSize: 64 * 1024 * 1024, FilterPolicy: bloom.FilterPolicy(10)},
-			{TargetFileSize: 128 * 1024 * 1024, FilterPolicy: bloom.FilterPolicy(10)},
+		Levels: [7]pebble.LevelOptions{
+			{BlockSize: 2 * 1024 * 1024, FilterPolicy: bloom.FilterPolicy(10)},
+			{BlockSize: 4 * 1024 * 1024, FilterPolicy: bloom.FilterPolicy(10)},
+			{BlockSize: 8 * 1024 * 1024, FilterPolicy: bloom.FilterPolicy(10)},
+			{BlockSize: 16 * 1024 * 1024, FilterPolicy: bloom.FilterPolicy(10)},
+			{BlockSize: 32 * 1024 * 1024, FilterPolicy: bloom.FilterPolicy(10)},
+			{BlockSize: 64 * 1024 * 1024, FilterPolicy: bloom.FilterPolicy(10)},
+			{BlockSize: 128 * 1024 * 1024},
 		},
 		ReadOnly: readonly,
 
@@ -247,7 +257,7 @@ func NewDB(file string, cache int, handles int, namespace string, readonly bool)
 func main() {
 	flag.Parse()
 
-	db, err := NewDB(*dbPath, *c, 100000, "bench_pebble", false)
+	db, err := NewDB(*dbPath, *c, 100000, "bench_pebble_v2", false)
 
 	if err != nil {
 		log.Crit("New dashboard fail", "err", err)
@@ -299,12 +309,12 @@ func main() {
 	if readCount > 0 {
 		// warn up DB
 		per := total / 2000 / threads // 0.5%  of the data
-		for tid := int64(0); tid < threads; tid++ {
-			wg.Add(1)
-			id := tid
-			go randomRead(id, per, total, db, &wg)
-		}
-		wg.Wait()
+		//for tid := int64(0); tid < threads; tid++ {
+		//	wg.Add(1)
+		//	id := tid
+		//	go randomRead(id, per, total, db, &wg)
+		//}
+		//wg.Wait()
 		fmt.Printf("\n%s", FormatCacheStats())
 		fmt.Printf("========= Warn up done ===============\n")
 
@@ -323,9 +333,9 @@ func main() {
 		m2 := db.Metrics()
 		fmt.Printf("Filter: Hit Count %d; Miss Count: %d\n", m2.Filter.Hits-m1.Filter.Hits, m2.Filter.Misses-m1.Filter.Misses)
 		fmt.Printf("BlockCache: Hit Count %d; Miss Count: %d\n", m2.BlockCache.Hits-m1.BlockCache.Hits, m2.BlockCache.Misses-m1.BlockCache.Misses)
-		fmt.Printf("TableCache: Hit Count %d; Miss Count: %d\n", m2.TableCache.Hits-m1.TableCache.Hits, m2.TableCache.Misses-m1.TableCache.Misses)
+		fmt.Printf("TableCache: Hit Count %d; Miss Count: %d\n", m2.FileCache.Hits-m1.FileCache.Hits, m2.FileCache.Misses-m1.FileCache.Misses)
 		fmt.Printf("Avg I/O per Get ≈ %.4f\n",
-			float64(m2.BlockCache.Misses+m2.TableCache.Misses-m1.BlockCache.Misses-m1.TableCache.Misses)/float64(readCount))
+			float64(m2.BlockCache.Misses+m2.FileCache.Misses-m1.BlockCache.Misses-m1.FileCache.Misses)/float64(readCount))
 
 		fmt.Printf("DB State \n%s", m2.String())
 
