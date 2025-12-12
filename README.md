@@ -234,7 +234,7 @@ disk I/O, mainly due to the behavior of Bloom filters and cache residency.
 
 ---
 
-### Benchmark Plan: Validating the O(1)-Like Read Behavior
+### Benchmark Plan: Validating the Effectively O(1) Read Behavior
 
 To verify the previous hypothesis, the benchmark will:
 
@@ -499,7 +499,7 @@ Across all three phases, data block hit rate remains consistently below **3%**,
 ---
 
 ## Conclusion & Recommendations
-### Conclusion: Pebble Achieves O(1)-Like Read I/O Under Sufficient Cache
+### Conclusion: Pebble Achieves Effectively O(1) Read I/O Under Sufficient Cache
 
 Although the theoretical read complexity of Pebble is `O(log N)` due to its multi-level LSM structure, 
 this complexity does not directly translate into real-world read I/O behavior.
