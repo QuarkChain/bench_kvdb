@@ -133,7 +133,7 @@ Cache can hold:
 | All-Index                  | 176 MB           | 1.7 GB         | 18 GB           |
 | Filter + All-Index         | 207 MB (0.91%)   | 2.0 GB (0.89%) | 20.5 GB (0.91%) |
 
-Key: 32-byte hashes
+Key: 32-byte hashes  
 Value: 110 bytes (similar to geth trie items average value)
 
 #### Workload
@@ -151,8 +151,9 @@ We directly use Pebble’s internal counters:
 - Data block hit rate
 - Overall block cache hit rate
 - I/Os per Get — the final target metric
+
 $$
-\text{I/Os per Get} \approx BlockCacheMiss  / GetCount
+\text{I/Os per Get} \approx BlockCacheMiss / GetCount
 $$
 
 This holds because Pebble routes **all** block reads — filter, top-index, index, data blocks — through the BlockCache,
