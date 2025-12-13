@@ -73,9 +73,6 @@ Thus lookups that reach LLast follow the full path:
 **Why filters exclude LLast**  
 Bloom filters for LLast would be enormous, expensive to cache, and provide little benefit because most lookups eventually reach LLast anyway.  
 Pebble therefore does **not** consult Bloom filters for LLast.  
-Thus we define:
-
-**Filter = total Bloom filter size across all non-LLast levels.**
 
 With these filters cached:
 - Most negative lookups are eliminated before touching LLast.
@@ -100,7 +97,7 @@ Cache can hold:
   → Positive lookups avoid index misses and approach minimum I/O.
 
 **Component Definitions**
-- **Filter:** Bloom filters for all non-LLast levels
+- **Filter:** Bloom filters for all **non-LLast** levels
 - **Top-Index:** All top-level per-SST index blocks
 - **All-Index:** Top-Index + all internal index blocks
 
