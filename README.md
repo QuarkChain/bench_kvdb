@@ -9,8 +9,8 @@ this model does not accurately reflect real disk I/O behavior under realistic ca
 This work presents an extensive empirical study on the **true disk I/O cost of random KV lookups at blockchain scale**, using Pebble as the underlying storage engine. We benchmark databases ranging from **22 GB to 2.2 TB** (200M to 20B keys) under multiple cache configurations that selectively fit Bloom filters, top indexes, and full index blocks into memory.
 
 Our experiments show that:
-- Once **Bloom filters (excluding LLast) and Top-Index blocks** fit in cache, **most negative lookups incur zero disk I/O**, and the I/O per Get rapidly drops to ~2.
-- When **all index blocks also fit in cache**, the I/O per Get further converges to **~1.0–1.3**, largely independent of total database size.
+- Once **Bloom filters (excluding LLast) and Top-Index blocks** fit in cache, **most negative lookups incur zero disk I/O**, and the I/Os per Get rapidly drops to ~2.
+- When **all index blocks also fit in cache**, the I/Os per Get further converges to **~1.0–1.3**, largely independent of total database size.
 - Data block caching has only a secondary effect on overall I/O.
 
 These results demonstrate that, under sufficient cache, **Pebble exhibits effectively O(1) disk I/O behavior for random reads**, 
@@ -22,7 +22,7 @@ for the performance modeling and design of blockchain trie databases and executi
 ## Overview
 
 `bench_kvdb` is a benchmarking tool for measuring the **disk I/O cost of random key lookups** in key-value databases 
-like Pebble, using **I/O operations per Get (I/O per Get)**.
+like Pebble, using **I/O operations per Get (I/Os per Get)**.
 
 Designed for blockchain-scale workloads, the tool simulates:
 - Cryptographic hash keys,
@@ -227,7 +227,7 @@ disk I/O, mainly due to the behavior of Bloom filters and cache residency.
       - Only the data block read remains → **~1 I/O**
     - So the real cost becomes:
       - `≈ 1 I/Os per Get` operation → Effectively O(1)
-      - If hot data blocks also fit in cache, the amortized I/O can even fall **below 1 I/O per Get**.
+      - If hot data blocks also fit in cache, the amortized I/O can even fall **below 1 I/Os per Get**.
 
 **We hypothesize that**
 > With sufficient cache, Pebble’s practical read I/O approaches an *O(1)* pattern, converging to ~1–2 I/Os per Get — far below the theoretical `O(log N)` complexity.
@@ -253,9 +253,9 @@ To verify the previous hypothesis, the benchmark will:
 
 4. Measure **storage I/O only**, not response latency.
 
-5. Calculate **I/O per Get** using Pebble internal metrics, which closely approximate OS-level I/O behavior:
+5. Calculate **I/Os per Get** using Pebble internal metrics, which closely approximate OS-level I/O behavior:
 
-   > I/O per Get ≈ (BlockCache Miss Count + TableCache Miss Count) / Key Lookup Count
+   > I/Os per Get ≈ (BlockCache Miss Count + TableCache Miss Count) / Key Lookup Count
 
 6. Dataset sizes:
     - Records:
@@ -389,7 +389,7 @@ The analysis below will use two **inflection points** and three **cache phases**
 
 ---
 
-All subsequent analyses (filter hit rates, index hit rates, data hit rates, overall block cache hit rate, and I/O per Get) directly reference these standardized definitions.
+All subsequent analyses (filter hit rates, index hit rates, data hit rates, overall block cache hit rate, and I/Os per Get) directly reference these standardized definitions.
 
 
 ### Filter Hit Rate & Top Index Hit Rate
@@ -489,7 +489,7 @@ Across all three phases, data block hit rate remains consistently below **3%**,
     - **I/Os per Get drop sharply toward 1.0–1.3.**
 - **Inflection Point 2 (`Filter (excluding LLast) + All Index`)**  
   Beyond this point:
-    - Random-read **`I/Os per Get` approach the tight lower bound** (~1 `I/O per Get`).
+    - Random-read **`I/Os per Get` approach the tight lower bound** (~1 `I/Os per Get`).
     - Further cache growth yields **only marginal additional I/O reduction**.
 - **Data block caching remains negligible in all phases.**
 - **Behavior consistent across dataset sizes (22 GB – 2.2 TB):**  
@@ -505,13 +505,13 @@ Although the theoretical read complexity of Pebble is `O(log N)` due to its mult
 this complexity does not directly translate into real-world read I/O behavior.
 
 Experimental results show that:
-- Once `Filter (excluding LLast) + Top Index` is resident in cache, almost all negative lookups are resolved entirely in memory, and I/O per Get rapidly drops to ~2 or less.
-- When `Filter (excluding LLast) + All Index` fits in cache, I/O per Get further converges toward ~1.0–1.3, after which additional cache yields only marginal I/O reduction.
+- Once `Filter (excluding LLast) + Top Index` is resident in cache, almost all negative lookups are resolved entirely in memory, and I/Os per Get rapidly drops to ~2 or less.
+- When `Filter (excluding LLast) + All Index` fits in cache, I/Os per Get further converges toward ~1.0–1.3, after which additional cache yields only marginal I/O reduction.
 
 These behaviors are consistent across database sizes ranging from **22GB to 2.2TB**.
 
 > With sufficient cache residency of Bloom filters and index blocks, the practical read I/O behavior of Pebble is 
-> effectively **O(1)** and consistently converges to **1–2 I/O per Get operation**.
+> effectively **O(1)** and consistently converges to **1–2 I/Os per Get operation**.
 
 ---
 
@@ -520,12 +520,12 @@ These behaviors are consistent across database sizes ranging from **22GB to 2.2T
 1. Minimum cache for near-constant read performance  
    The cache should be large enough to hold:
    - `Filter (excluding LLast) + Top Index`  
-     This already eliminates almost all negative lookups and reduces I/O per Get to ~2.
+     This already eliminates almost all negative lookups and reduces I/Os per Get to ~2.
 
 2. Optimal cache for near-single-I/O reads  
    The cache should be large enough to hold:
    - `Filter (excluding LLast) + All Index`  
-     At this point, I/O per Get consistently converges to ~1.0–1.3 even at tens of billions of keys.
+     At this point, I/Os per Get consistently converges to ~1.0–1.3 even at tens of billions of keys.
 
 3. Data block caching is optional for read I/O optimization  
 
