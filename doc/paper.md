@@ -153,11 +153,15 @@ We directly use Pebble’s internal counters:
 - I/Os per Get — the final target metric
 
 $$
-\text{I/Os per Get} \approx BlockCacheMiss / GetCount
+\text{I/Os per Get} \approx \frac{\text{BlockCacheMiss}}{\text{GetCount}}
 $$
 
-This holds because Pebble routes **all** block reads — filter, top-index, index, data blocks — through the BlockCache,
-and every read path goes through the cache; therefore **each BlockCacheMiss corresponds to exactly one I/O**.
+This approximation holds in steady state because Pebble routes **all** block reads (filter, Top-Index, index, and data blocks) through the BlockCache. 
+Every lookup first consults the cache, and **a cache miss typically results in a single underlying disk or OS-level read**.
+
+With sufficient warm-up, most SST files are already resident in TableCache, and OS page-cache effects are minimized. 
+As a result, `BlockCacheMiss` closely tracks the true physical read pressure and provides a stable,
+implementation-aligned measure of per-lookup I/O cost.
 
 ---
 
