@@ -1,16 +1,22 @@
-# Understanding the True Disk I/O Cost of KV Lookups in Blockchain Systems
+# Understanding the Practical Disk I/O Cost of KV Lookups in Blockchain Systems
 A Study of Pebble under Realistic Blockchain State Workloads
 
 ## Abstract
 Many blockchain analyses and performance models assume that key-value (KV) storage reads incur **O(log N)** disk I/O 
-complexity, especially when using LSM-tree engines such as Pebble or RocksDB. This assumption is rooted in worst-case 
-SST traversal across multiple levels, each involving Bloom filters, index blocks, and data blocks.
+complexity, especially when using LSM-tree engines such as Pebble or RocksDB. This assumption is rooted 
+in the worst-case scenario of SST traversal, where a lookup have to access multiple levels and, at each level, 
+examine Bloom filters, index blocks, and data blocks.
 
-However, we find that this model does **not** reflect real-world behavior under realistic cache conditions.
+However, we find that this model does not reflect real-world behavior. In practice, caches often hold most 
+filter and index blocks, which can significantly reduce I/Os.
 
-Through extensive controlled experiments across datasets from **22 GB → 2.2 TB** (200M → 20B keys), we find that:
-- Once **Bloom filters (excluding LLast, the last and deepest LSM level) and Top-Index blocks** fit in cache, **most negative lookups incur zero disk I/O**, and the I/Os per Get rapidly drops to ~2.
-- When **all index blocks also fit in cache**, the I/Os per Get further converges to **~1.0–1.3**, largely independent of total database size.
+To understand the practical disk I/O behavior of LSM-based databases under realistic caching conditions, 
+we conduct extensive controlled experiments using Pebble as a representative engine, 
+spanning datasets from **22 GB to 2.2 TB** (**200M to 20B keys**), and find that:
+- Once **Bloom filters (excluding [LLast](#llast)) and [Top-Index blocks](#top-level-index)** fit in cache, 
+  **most negative lookups incur zero disk I/O**, and the I/Os per Get operation rapidly drops to ~2.
+- When **all index blocks also fit in cache**, the I/Os per Get operation further converges to **~1.0–1.3**, 
+  largely independent of total database size.
 - Data block caching has only a marginal effect on overall I/O under pure random-read workloads.
 
 Overall, under sufficient cache, **Pebble exhibits effectively O(1) disk I/O behavior for random reads**,
@@ -35,7 +41,7 @@ As a result, the real physical I/O behavior of a KV lookup is often:
 
 These observations raise an important practical question:
 
-> At realistic blockchain scale, what is the true disk I/O cost of a random KV lookup in practice?
+> At realistic blockchain scenarios, what is the practical disk I/O cost of a random KV lookup in practice?
 
 This study aims to answer this question with direct, empirical measurements, in order to:
 - Validate or challenge the common O(log N) KV lookup assumption,
@@ -60,11 +66,11 @@ A `Get` operation in Pebble proceeds as follows:
    d) Data block lookup → read value and return
 ```
 
-**Top-level index**  
+##### **Top-level index**  
 A tiny per-SST top-level index pointing to internal index blocks (“Index blocks”).  
 It is touched on almost every lookup and typically remains fully cached.
 
-**LLast**  
+##### **LLast**  
 The deepest level of the LSM tree.  
 It stores most of the data and **does not use Bloom filters** during lookups.  
 Thus lookups that reach LLast follow the full path:  
@@ -164,7 +170,7 @@ Every lookup first consults the cache, and **a cache miss typically results in a
 in steady state, **with minimal readahead and compaction interference**.
 
 With sufficient warm-up, most SST files are already resident in TableCache, and OS page-cache effects are minimized. 
-As a result, `BlockCacheMiss` closely tracks the true physical read pressure and provides a stable,
+As a result, `BlockCacheMiss` closely tracks the practical physical read pressure and provides a stable,
 implementation-aligned measure of per-lookup I/O cost.
 
 ---
