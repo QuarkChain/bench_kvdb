@@ -1,5 +1,5 @@
 # Understanding the Practical Disk I/O Cost of KV Lookups in Blockchain Systems
-A Study of Pebble under Realistic Blockchain State Workloads
+A Empirical Study of Pebble under Realistic Blockchain State Workloads
 
 ## Abstract
 Many blockchain analyses and performance models assume that key-value (KV) storage reads incur **O(log N)** disk I/O 
@@ -34,10 +34,9 @@ Modern LSM-based KV engines such as Pebble rely heavily on:
 - Small, highly reusable index structures;
 - Block cache and OS page cache that keep frequently accessed metadata in memory.
 
-As a result, the real physical I/O behavior of a KV lookup is often:
-- Zero disk I/O for most negative lookups,
-- Only 1–2 disk I/Os for most positive lookups,
-- And largely independent of total database size once Bloom filters and index blocks fit in cache.
+As a result, the real physical I/O behavior of a KV lookup is often bounded by a small
+constant (≈1–2 I/Os), and becomes largely independent of total database size once Bloom
+filters and index blocks fit in cache.
 
 These observations raise an important practical question:
 
@@ -228,6 +227,7 @@ Across all three phases, data block hit rate remains consistently low,
 2. **Phase 2:** Hit rate grow at a **slower slope** driven by index blocks become resident.
 3. **Phase 3:** Hit rate **stabilizes**, since data block caching contributes little under random read workloads.
 
+
 ---
 
 ### Read I/O Cost per Get (Key Result)
@@ -277,10 +277,6 @@ The results therefore represent steady-state random-read behavior under favorabl
 ### Conclusion: Pebble Achieves Effectively O(1) Disk I/O Under Sufficient Cache
 Although the theoretical read complexity of Pebble is `O(log N)`,
 this bound is rarely observable in practice under realistic cache configurations.
-
-Experimental results across database sizes ranging from **22GB to 2.2TB** consistent show that:
-- Once `Filter + Top-Index` is resident in cache, almost all negative lookups are resolved entirely in memory, and I/Os per Get rapidly drops to ~2.
-- When `Filter + All-Index` fits in cache, I/Os per Get further converges toward ~1.0–1.3, after which additional cache yields only marginal I/O reduction.
 
 > With sufficient cache residency of Bloom filters and index blocks, the practical read I/O behavior of Pebble is 
 > **effectively O(1)** and consistently converges to **1–2 I/Os per Get operation**.
