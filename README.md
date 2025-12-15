@@ -67,10 +67,7 @@ The paper covers:
 ---
 
 ## Build & Run
-This benchmark requires a small instrumentation patch to **Pebble v1.1.5**
-to expose **per-call-site block cache hit statistics**.
-
-**Note**: This benchmark relies on a small Pebble instrumentation patch to expose block-cache statistics for measurement.
+This benchmark requires a small instrumentation patch to **Pebble v1.1.5** to expose **per-call-site block cache hit statistics** for measurement.
 
 ### Patch Pebble
 Replace the `readBlock` implementation in: [pebble/sstable/reader.go](https://github.com/cockroachdb/pebble/blob/v1.1.5/sstable/reader.go#L519)
