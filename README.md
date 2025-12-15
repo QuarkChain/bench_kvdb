@@ -137,6 +137,17 @@ cd ./src/bench_pebble
 > ⚠️ Results apply to Pebble v1.1.5.
 > Read-path or cache behavior may differ in Pebble v2+.
 
+### Results & Logs
+
+Benchmark results and raw logs are available at:
+[`src/bench_pebble/logs/`](https://github.com/QuarkChain/bench_kvdb/tree/main/src/bench_pebble/logs/)
+
+This directory includes:
+- Database properties for all datasets (Small: 22 GB; Medium: 224 GB; Large: 2.2 TB)
+- Raw benchmark logs with block-cache hit/miss statistics and component breakdowns
+
+All figures and tables in `docs/paper.md` are derived directly from these logs.
+
 ---
 
 ## Limitations
