@@ -16,7 +16,7 @@ The benchmark focuses on a single metric:
 
 ## Why This Matters
 
-KV lookups in blockchain systems are often modeled as costing `O(log N)` disk I/O.
+KV lookups in blockchain systems are commonly modeled as costing `O(log N)` disk I/O.
 However, modern LSM engines rely heavily on:
 - Bloom filters
 - Compact index structures
@@ -32,14 +32,17 @@ This repository provides **empirical data** to measure the *actual* read I/O cos
 
 Across databases from **22 GB to 2.2 TB (200M–20B keys)**:
 
-- When the cache can hold **Bloom filters (excluding LLast) + Top Index**  
+- When the cache can hold **Bloom filters (excluding [LLast](docs/paper.md#llast)) + [Top Index](docs/paper.md#top-level-index)**  
   → **I/Os per Get ≈ 2**
 
-- When the cache can hold **Bloom filters + all index blocks**  
+- When the cache can hold **Bloom filters (excluding [LLast](docs/paper.md#llast)) + all index blocks**  
   → **I/Os per Get ≈ 1.0–1.3**
 
 - Behavior is **largely independent of total DB size**
 - Data block caching has **minimal impact** under pure random reads
+
+**Note:**  
+Bloom filters intentionally exclude LLast; see the rationale in [`Why filters exclude LLast`](docs/paper.md#why-filters-exclude-llast).
 
 > **Conclusion:**  
 > Under sufficient cache, Pebble exhibits **effectively O(1) disk I/O** behavior for random KV lookups.
@@ -66,6 +69,8 @@ The paper covers:
 ## Build & Run
 This benchmark requires a small instrumentation patch to **Pebble v1.1.5**
 to expose **per-call-site block cache hit statistics**.
+
+**Note**: This benchmark relies on a small Pebble instrumentation patch to expose block-cache statistics for measurement.
 
 ### Patch Pebble
 Replace the `readBlock` implementation in: [pebble/sstable/reader.go](https://github.com/cockroachdb/pebble/blob/v1.1.5/sstable/reader.go#L519)
@@ -129,7 +134,7 @@ cd ./src/bench_pebble
 
 ### Benchmark Environment
 - CPU: 32 cores
-- emory: 128 GB
+- Memory: 128 GB
 - Disk: 7 TB NVMe (RAID 0)
 - OS: Ubuntu
 - Storage Engine: **Pebble v1.1.5**

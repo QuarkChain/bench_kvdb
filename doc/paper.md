@@ -79,7 +79,7 @@ It stores most of the data and **does not use Bloom filters** during lookups.
 Thus lookups that reach LLast follow the full path:  
 **Top-level index → index block → data block**.
 
-**Why filters exclude LLast**  
+#### **Why filters exclude LLast**  
 Bloom filters for LLast would be prohibitively large, expensive to keep hot in cache, and provide limited benefit in practice
 because most positive lookups ultimately probe LLast regardless. Pebble therefore does **not** consult Bloom filters for LLast.  
 
