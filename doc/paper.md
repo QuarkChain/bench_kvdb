@@ -200,7 +200,7 @@ Once the cache exceeds **Inflection Point 1**, both the Bloom filter and Top Ind
 | **At Inflection Point 2** | 98.2% | 93.1%  | 72.6% |
 | **1% DB Size**            | 99.6% | 95.8%  | 73.4% |
 
-![trend-index-hit-rate.png](../images/trend-index-hit-rate.png)
+![trend-index-hit-rate.png](./images/trend-index-hit-rate.png)
 
 1. **Phase 1:** Very few index blocks cached (may **~1%–3%**).
 2. **Phase 2:** Index hit **rises sharply** to ~70–99% as the cache approaches **Inflection Point 2**.
@@ -233,7 +233,7 @@ Across all three phases, data block hit rate remains consistently low,
 | **At Inflection Point 2** | 89.5% | 89.7%  | 90.4% |
 | **1% DB Size**            | 89.6% | 90.0%  | 90.5% |
 
-![trend-blockcache-hit-rate.png](../images/trend-blockcache-hit-rate.png)
+![trend-blockcache-hit-rate.png](./images/trend-blockcache-hit-rate.png)
 
 1. **Phase 1:** Hit rate rises steeply, driven by the rapid **in-memory residency of Bloom filters and Top Index**.
 2. **Phase 2:** Hit rate grow at a **slower slope** driven by index blocks become resident.
@@ -250,7 +250,7 @@ Across all three phases, data block hit rate remains consistently low,
 | **At Inflection Point 2** | 1.04  | 1.10   | 1.33  |
 | **1% DB Size**            | 1.03  | 1.07   | 1.31  |
 
-![trend-io-per-get.png](../images/trend-io-per-get.png)
+![trend-io-per-get.png](./images/trend-io-per-get.png)
 
 ### Key Observations
 

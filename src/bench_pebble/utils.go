@@ -11,17 +11,12 @@ import (
 // https://github.com/cockroachdb/pebble/blob/v1.1.5/sstable/reader.go#L519
 
 //var (
-//	lock sync.Mutex
-//	CacheHitsDetail = make(map[string]*atomic.Int32)
+//	lock             sync.Mutex
+//	CacheHitsDetail  = make(map[string]*atomic.Int32)
 //	CacheCallsDetail = make(map[string]*atomic.Int32)
 //)
 //
-//func countCacheHitsDetail(){
-//	pc, _, _, ok := runtime.Caller(2)
-//	caller := "unknown"
-//	if ok {
-//		caller = runtime.FuncForPC(pc).Name()
-//	}
+//func countCacheHitsDetail(caller string) {
 //	lock.Lock()
 //	defer lock.Unlock()
 //	if CacheHitsDetail[caller] == nil {
@@ -31,12 +26,7 @@ import (
 //	CacheHitsDetail[caller].Add(1)
 //}
 //
-//func countCacheCallsDetail() {
-//	pc, _, _, ok := runtime.Caller(2)
-//	caller := "unknown"
-//	if ok {
-//		caller = runtime.FuncForPC(pc).Name()
-//	}
+//func countCacheCallsDetail(caller string) {
 //	lock.Lock()
 //	defer lock.Unlock()
 //	if CacheCallsDetail[caller] == nil {
@@ -45,6 +35,7 @@ import (
 //
 //	CacheCallsDetail[caller].Add(1)
 //}
+//
 //
 //func (r *Reader) readBlock(
 //	ctx context.Context,
@@ -59,9 +50,9 @@ import (
 //	if ok {
 //		caller = runtime.FuncForPC(pc).Name()
 //	}
-//	countCacheCallsDetail()
+//	countCacheCallsDetail(caller)
 //	if h := r.opts.Cache.Get(r.cacheID, r.fileNum, bh.Offset); h.Get() != nil {
-//		countCacheHitsDetail()
+//		countCacheHitsDetail(caller)
 
 func FormatCacheStats() string {
 	keys := make([]string, 0, len(sstable.CacheCallsDetail))
