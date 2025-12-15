@@ -63,7 +63,7 @@ A `Get` operation in Pebble proceeds as follows:
 1. Lookup MemTable / Immutable MemTables and return value if found (in memory)
 2. Lookup MANIFEST to find candidate SST files (in memory)
 3. For each SST:
-   a) Load Top-level index at init → find index block after filter check
+   a) Load Top-level index at init → local index block after filter check
    b) Table-level Bloom filter check (except LLast) → skip SST if key absent
    c) Index block lookup → locate data block
    d) Data block lookup → read value and return
@@ -148,7 +148,7 @@ Read-path behavior, filter layout, or caching behavior may differ in Pebble v2+ 
 | Filter + All-Index         | 207 MB (0.91%)   | 2.0 GB (0.89%) | 20.5 GB (0.91%) |
 
 Key: 32-byte hashes  
-Value: 110 bytes (similar to geth trie items average value)
+Value: 110 bytes (approximately the average RLP size of geth trie nodes)
 
 #### Workload
 - Pure random reads
@@ -178,27 +178,39 @@ With sufficient warm-up, most SST files are already resident in TableCache, and 
 As a result, `BlockCacheMiss` closely tracks the practical physical read pressure and provides a stable,
 implementation-aligned measure of per-lookup I/O cost.
 
+#### Limitations
+- Only pure random reads are evaluated.
+- No range queries or prefix scans.
+- No heavy concurrent writes or compaction stress.
+- OS page cache effects are not isolated.
+- Single-node environment only.
+
+The results therefore represent steady-state random-read behavior under favorable cache conditions.
+
 ---
 
 ## Results
-### Bloom Filter & Top Index Hit Rate
-| Dataset                   | Small (Filter) | Medium (Filter) | Large (Filter) | Small (TopIdx) | Medium (TopIdx) | Large (TopIdx) |
-|---------------------------|----------------|-----------------|----------------|----------------|-----------------|----------------|
-| **At Inflection Point 1** | 98.5%          | 99.6%           | 98.9%          | 96.4%          | 97.8%           | 95.4%          |
-| **0.2% DB Size**          | 100%           | 100%            | 100%           | 100%           | 100%            | 100%           |
+We first analyze how cache size affects the hit rates of Bloom filters, Top-Index blocks, and index blocks.
+We then show how these effects translate into overall block cache hit rate and, ultimately, the **I/Os per Get** metric.
 
-Once the cache exceeds **Inflection Point 1**, both the Bloom filter and Top Index achieve near-100% hit rate and negative lookups are resolved in memory. This immediately drops I/Os per Get to around ~2.
+### Bloom Filter & Top Index Hit Rate
+| CacheSize                    | Small (Filter) | Medium (Filter) | Large (Filter) | Small (TopIdx) | Medium (TopIdx) | Large (TopIdx) |
+|------------------------------|----------------|-----------------|----------------|----------------|-----------------|----------------|
+| **Inflection Point 1 (IP1)** | 98.5%          | 99.6%           | 98.9%          | 96.4%          | 97.8%           | 95.4%          |
+| **Beyond IP1 (≈0.2% DB)**    | 100%           | 100%            | 100%           | 100%           | 100%            | 100%           |
+
+Once the cache exceeds **Inflection Point 1**, both the Bloom filter and Top Index achieve close to 100% hit rate and negative lookups are resolved in memory. 
 
 ---
 
 ### Index Block Hit Rate
 
-| Dataset                   | Small | Medium | Large |
-|---------------------------|-------|--------|-------|
-| **At Inflection Point 1** | 2.1%  | 1.5%   | 2.9%  |
-| **0.2% DB Size**          | 9.1%  | 11.8%  | 13.7% |
-| **At Inflection Point 2** | 98.2% | 93.1%  | 72.6% |
-| **1% DB Size**            | 99.6% | 95.8%  | 73.4% |
+| CacheSize                    | Small Dataset | Medium Dataset | Large Dataset |
+|------------------------------|---------------|----------------|---------------|
+| **Inflection Point 1 (IP1)** | 2.1%          | 1.5%           | 2.9%          |
+| **Beyond IP1 (≈0.2% DB)**    | 9.1%          | 11.8%          | 13.7%         |
+| **Inflection Point 2 (IP2)** | 98.2%         | 93.1%          | 72.6%         |
+| **Beyond IP2 (≈1% DB)**      | 99.6%         | 95.8%          | 73.4%         |
 
 ![trend-index-hit-rate.png](./images/trend-index-hit-rate.png)
 
@@ -212,12 +224,12 @@ This is the main driver of I/O reduction after **At Inflection Point 1**.
 
 ### Data Block Hit Rate
 
-| Dataset                   | Small | Medium | Large |
-|---------------------------|-------|--------|-------|
-| **At Inflection Point 1** | 1.0%  | 0.7%   | 1.3%  |
-| **0.2% DB Size**          | 1.2%  | 0.9%   | 1.6%  |
-| **At Inflection Point 2** | 1.4%  | 1.1%   | 2.4%  |
-| **1% DB Size**            | 1.5%  | 1.2%   | 2.4%  |
+| CacheSize                    | Small Dataset | Medium Dataset | Large Dataset |
+|------------------------------|---------------|----------------|---------------|
+| **Inflection Point 1 (IP1)** | 1.0%          | 0.7%           | 1.3%          |
+| **Beyond IP1 (≈0.2% DB)**    | 1.2%          | 0.9%           | 1.6%          |
+| **Inflection Point 2 (IP2)** | 1.4%          | 1.1%           | 2.4%          |
+| **Beyond IP2 (≈1% DB)**      | 1.5%          | 1.2%           | 2.4%          |
 
 Across all three phases, data block hit rate remains consistently low,
 **data block caching contributes little to the observed I/O reduction** in random-read workloads.
@@ -226,12 +238,12 @@ Across all three phases, data block hit rate remains consistently low,
 
 ### Overall Block Cache Hit Rate
 
-| Dataset                   | Small | Medium | Large |
-|---------------------------|-------|--------|-------|
-| **At Inflection Point 1** | 77.3% | 79.6%  | 82.5% |
-| **0.2% DB Size**          | 80.1% | 81.7%  | 85.8% |
-| **At Inflection Point 2** | 89.5% | 89.7%  | 90.4% |
-| **1% DB Size**            | 89.6% | 90.0%  | 90.5% |
+| CacheSize                    | Small Dataset | Medium Dataset | Large Dataset |
+|------------------------------|---------------|----------------|---------------|
+| **Inflection Point 1 (IP1)** | 77.3%         | 79.6%          | 82.5%         |
+| **Beyond IP1 (≈0.2% DB)**    | 80.1%         | 81.7%          | 85.8%         |
+| **Inflection Point 2 (IP2)** | 89.5%         | 89.7%          | 90.4%         |
+| **Beyond IP2 (≈1% DB)**      | 89.6%         | 90.0%          | 90.5%         |
 
 ![trend-blockcache-hit-rate.png](./images/trend-blockcache-hit-rate.png)
 
@@ -243,12 +255,12 @@ Across all three phases, data block hit rate remains consistently low,
 
 ### Read I/O Cost per Get (Key Result)
 
-| Cache Configuration       | Small | Medium | Large |
-|---------------------------|-------|--------|-------|
-| **At Inflection Point 1** | 2.25  | 2.18   | 2.42  |
-| **0.2% DB Size**          | 1.97  | 1.95   | 1.96  |
-| **At Inflection Point 2** | 1.04  | 1.10   | 1.33  |
-| **1% DB Size**            | 1.03  | 1.07   | 1.31  |
+| CacheSize                    | Small Dataset | Medium Dataset | Large Dataset |
+|------------------------------|---------------|----------------|---------------|
+| **Inflection Point 1 (IP1)** | 2.25          | 2.18           | 2.42          |
+| **Beyond IP1 (≈0.2% DB)**    | 1.97          | 1.95           | 1.96          |
+| **Inflection Point 2 (IP2)** | 1.04          | 1.10           | 1.33          |
+| **Beyond IP2 (≈1% DB)**      | 1.03          | 1.07           | 1.31          |
 
 ![trend-io-per-get.png](./images/trend-io-per-get.png)
 
@@ -272,17 +284,6 @@ Across all three phases, data block hit rate remains consistently low,
 
 This confirms:
 > Overall, random-read I/O is primarily governed by Bloom filter and index residency.
-
----
-
-## Limitations
-- Only pure random reads are evaluated.
-- No range queries or prefix scans.
-- No heavy concurrent writes or compaction stress.
-- OS page cache effects are not isolated.
-- Single-node environment only.
-
-The results therefore represent steady-state random-read behavior under favorable cache conditions.
 
 ---
 
