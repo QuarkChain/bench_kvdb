@@ -1,5 +1,26 @@
 # bench_kvdb
 
+## Abstract
+
+Blockchain execution workloads perform massive numbers of random key-value (KV)
+lookups over LSM-tree based databases. These lookups are often modeled as costing
+`O(log N)` disk I/O, but modern LSM engines rely heavily on Bloom filters, compact
+indexes, and caching, making real-world behavior very different from this
+theoretical assumption.
+
+`bench_kvdb` is a benchmarking tool that measures the *practical disk I/O cost* of
+random KV lookups using Pebble as a reference engine. We focus on a single metric,
+**I/Os per Get**, and instrument Pebble to attribute cache hits and misses along the
+read path.
+
+Across databases from 22 GB to 2.2 TB (200M–20B keys), we show that read I/O cost is
+largely independent of database size. With Bloom filters and top-level index blocks
+cached, random lookups incur about **2 disk I/Os per Get**; caching Bloom filters and 
+all index blocks reduces this further to about **1.0–1.3 disk I/Os per Get**, 
+exhibiting effectively constant-time I/O behavior.
+
+## Overview
+
 `bench_kvdb` is a benchmarking tool for measuring the **practical disk I/O cost of random key-value (KV) lookups**
 in **LSM-tree based databases**, using **Pebble** as the reference engine.
 

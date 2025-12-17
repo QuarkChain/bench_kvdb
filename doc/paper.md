@@ -3,9 +3,9 @@
 
 ## Abstract
 Many blockchain analyses and performance models assume that key-value (KV) storage reads incur **`O(log N)`** disk I/O 
-complexity, especially when using LSM-tree engines such as Pebble or RocksDB. This assumption is rooted 
-in the worst-case scenario of SST traversal, where a lookup have to access multiple levels and, at each level, 
-examine Bloom filters, index blocks, and data blocks.
+complexity (e.g., [TrieDB](https://github.com/base/triedb), [QMDB](https://arxiv.org/pdf/2501.05262)), especially when 
+using LSM-tree engines such as Pebble or RocksDB. This assumption is rooted in the worst-case scenario of SST traversal, 
+where a lookup have to access multiple levels and, at each level, examine Bloom filters, index blocks, and data blocks.
 
 However, we find that this model does not reflect real-world behavior. In practice, caches often hold most 
 filter and index blocks, which can significantly reduce I/Os.
@@ -13,14 +13,17 @@ filter and index blocks, which can significantly reduce I/Os.
 To understand the practical disk I/O behavior of LSM-based databases under realistic caching conditions, 
 we conduct extensive controlled experiments using Pebble as a representative engine, 
 spanning datasets from **22 GB to 2.2 TB** (**200M to 20B keys**), and find that:
-- Once **Bloom filters (excluding [LLast](#llast)) and [Top-Index blocks](#top-level-index)** fit in cache, 
-  **most negative lookups incur zero disk I/O**, and the I/Os per Get operation rapidly drops to ~2.
+- Once **Bloom filters (excluding [LLast](#llast)) and [Top-Index](#top-level-index-top-index-for-short)** fit in cache, 
+  **most negative lookups incur zero disk I/O**, and the I/Os per Get operation rapidly drops to ~2 
+  (1 index block read and 1 data block read).
 - When **all index blocks also fit in cache**, the I/Os per Get operation further converges to **~1.0–1.3**, 
   largely independent of total database size.
 - Data block caching has only a marginal effect on overall I/O under pure random-read workloads.
 
-Overall, under sufficient cache, **Pebble exhibits effectively O(1) disk I/O behavior for random reads**,
-challenging the common assumption that each KV lookup inherently costs `O(log N)` physical I/Os. This has direct implications
+Overall, when the cache is sufficient to hold Bloom filters (excluding LLast) and the Top-Index 
+— roughly **~0.1%–0.2% of the total database size** under blockchain-like workloads — , 
+**Pebble exhibits effectively O(1) disk I/O behavior for random reads**, challenging the common 
+assumption that each KV lookup inherently costs `O(log N)` physical I/Os. This has direct implications 
 for the performance modeling and design of blockchain trie databases and execution-layer storage systems.
 
 ---
@@ -71,18 +74,22 @@ A `Get` operation in Pebble proceeds as follows:
 1. Lookup MemTable / Immutable MemTables and return value if found (in memory)
 2. Lookup MANIFEST to find candidate SST files (in memory)
 3. For each SST:
-   a) Load Top-level index at reader initialization (used to locate index blocks after filter check)
+   a) Load Top-level index at reader initialization (used to locate internal index blocks after filter check)
    b) Table-level Bloom filter check (except LLast) → skip SST if key absent
-   c) Index block lookup → locate data block
+   c) Internal index block lookup → locate data block
    d) Data block lookup → read value and return
 ```
 
 The read path above references several internal components that appear
 throughout this paper. We briefly introduce them here for clarity.
 
-##### **Top-level index**  
-A tiny per-SST top-level index pointing to internal index blocks (“Index blocks”).  
+##### **Top-level index (Top-Index for short)**  
+A tiny per-SST top-level index pointing to internal index blocks.  
 It is touched on almost every lookup and typically remains fully cached.
+
+##### **Internal index blocks (Index blocks for short)**  
+Index blocks within each SST that map key ranges to data blocks.  
+They are accessed after a successful filter check and may incur one disk I/O if not cached.
 
 ##### **LLast**  
 The deepest level of the LSM tree. It stores most of the data and **does not use Bloom filters** during lookups.  
@@ -144,6 +151,9 @@ space into three phases and describe the expected read I/O behavior in each.
 Note: All experiments were conducted on Pebble v1.1.5. 
 Read-path behavior, filter layout, or caching behavior may differ in Pebble v2+ and should be evaluated separately.
 
+All benchmark code, Pebble instrumentation, and raw experiment logs are publicly
+available at [bench_kvdb](https://github.com/QuarkChain/bench_kvdb) for reproducibility.
+
 #### Dataset
 | Dataset                    | Small            | Medium         | Large           |
 |----------------------------|------------------|----------------|-----------------|
@@ -176,7 +186,7 @@ We rely on Pebble’s internal statistics to characterize read behavior, includi
 
 In Pebble, all block reads (filter, Top-Index, index, and data blocks) during a `Get` operation
 are routed through the BlockCache.
-Every lookup first consults the cache, and a cache miss typically results in a single underlying physical read
+Every lookup first consults the cache, and a block-cache miss typically results in a single underlying physical read
 under minimal readahead and compaction interference.
 
 $$
@@ -282,8 +292,8 @@ This confirms:
 Although the theoretical worst-case read complexity of Pebble is `O(log N)`,
 this bound is rarely observable in practice under realistic cache configurations.
 
-> With sufficient cache residency of Bloom filters and index blocks, the practical read I/O behavior of Pebble is 
-> **effectively O(1)** and consistently converges to **1–2 I/Os per Get operation**.
+> With sufficient cache residency of Bloom filters (excluding LLast) and index blocks, the practical read I/O 
+> behavior of Pebble is **effectively O(1)** and consistently converges to **1–2 I/Os per Get operation**.
 
 ---
 
