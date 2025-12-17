@@ -23,7 +23,7 @@ spanning datasets from **22 GB to 2.2 TB** (**200M to 20B keys**), and find that
 Overall, when the cache is sufficient to hold Bloom filters (excluding LLast) and the Top-Index 
 — roughly **~0.1%–0.2% of the total database size** under blockchain-like workloads — , 
 **Pebble exhibits effectively O(1) disk I/O behavior for random reads**, challenging the common 
-assumption that each KV lookup inherently costs `O(log N)` physical I/Os. This has direct implications 
+assumption that each KV lookup inherently costs `O(log N)` physical I/O. This has direct implications 
 for the performance modeling and design of blockchain trie databases and execution-layer storage systems.
 
 ---
