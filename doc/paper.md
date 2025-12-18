@@ -50,8 +50,8 @@ These observations raise an important practical question:
 This study aims to answer this question with direct, empirical measurements, in order to:
 - Validate or challenge the common `O(log N)` KV lookup assumption,
 - Quantify how much cache is actually required to achieve near-constant read I/O,
-- Provide empirical data to guide KV I/O modeling and cache configuration
-for trie databases and execution-layer storage in blockchain systems.
+- Providing empirical cache sizing recommendations for blockchain execution-layer persistent KV storage backends, 
+including state tries and snapshot KV stores.
 
 ---
 
@@ -132,18 +132,23 @@ Cache can hold:
 Based on the two cache inflection points defined above, we partition the cache
 size into three phases and describe the expected read I/O behavior in each.
 
-- **Phase 1 — `Cache < Inflection Point 1`**  
+- **Phase 1 — `Cache Size < Inflection Point 1`**  
   Filter and Top-Index misses are frequent → many unnecessary SST checks → **higher expected read I/O cost**.
 
-- **Phase 2 — `Inflection Point 1 < Cache < Inflection Point 2`**  
+- **Phase 2 — `Inflection Point 1 < Cache Size < Inflection Point 2`**  
   Filters and Top-Index are cached → negative lookups are largely resolved in memory → read I/O is **expected to decrease** as index blocks begin to reside in cache.
 
-- **Phase 3 — `Cache > Inflection Point 2`**  
+- **Phase 3 — `Cache Size > Inflection Point 2`**  
   Filters and all index blocks are cached → remaining I/O is **expected to come primarily from data blocks** → diminishing returns beyond this point.
   
 ---
 
 ### Experimental Setup
+
+This section describes the experimental methodology used to evaluate Pebble’s practical random-read I/O behavior 
+under blockchain-like workloads. It summarize the experimental environment, datasets, workloads,and metrics used 
+to measure cache residency and **I/Os per Get**, focusing on steady-state random-read behavior.
+
 #### Hardware and Software
 - CPU: 32 cores
 - Memory: 128 GB
@@ -178,6 +183,10 @@ Value: 110 bytes (approximately the average RLP size of geth trie nodes)
 - No range scans
 - No concurrent heavy writes or compactions
 
+> **Note.**  
+> All experiments focus on steady-state **pure random-read workloads** on a single node,
+> without concurrent heavy writes, compaction pressure, or range scans.
+
 #### Metric
 We rely on Pebble’s internal statistics to characterize read behavior, including:
 - Bloom filter hit rate
@@ -203,26 +212,23 @@ and **GetCount** is the number of completed `Get` operations measured.
 As a result, `BlockCacheMiss` closely tracks the practical physical read pressure and provides a stable,
 implementation-aligned measure of per-lookup I/O cost.
 
-#### Limitations
-- Only pure random reads are evaluated.
-- No range queries or prefix scans.
-- No heavy concurrent writes or compaction stress.
-- OS page cache effects are not isolated.
-- Single-node environment only.
-
-The results therefore represent steady-state random-read behavior under favorable cache conditions.
-
 ---
 
 ## Results
 We first analyze how cache size affects the hit rates of Bloom filters, Top-Index blocks, and index blocks.
 We then show how these effects translate into overall block cache hit rate and, ultimately, the **I/Os per Get** metric.
 
+Throughout this section, 
+**Inflection Point 1 (IP1)** refers to the cache size required to hold all non-LLast Bloom filters and Top-Index blocks
+(≈ **0.11%–0.14% of DB size** in our bench datasets),
+while **Inflection Point 2 (IP2)** refers to the cache size required to hold all non-LLast Bloom filters and all index blocks
+(≈ **~0.9% of DB size** in our bench datasets).
+
 ### Bloom Filter & Top Index Hit Rate
-| CacheSize                    | Small Dataset<br>(Filter Hit Rate) | Medium Dataset<br>(Filter Hit Rate) | Large Dataset<br>(Filter Hit Rate) | Small Dataset<br>(Top Index Hit Rate) | Medium Dataset<br>(Top Index Hit Rate) | Large Dataset<br>(Top Index Hit Rate) |
-|------------------------------|----------------|-----------------|----------------|----------------|-----------------|----------------|
-| **Inflection Point 1 (IP1)** | 98.5%          | 99.6%           | 98.9%          | 96.4%          | 97.8%           | 95.4%          |
-| **Beyond IP1 (≈0.2% DB)**    | 100%           | 100%            | 100%           | 100%           | 100%            | 100%           |
+| CacheSize                 | Small Dataset<br>(Filter Hit Rate) | Medium Dataset<br>(Filter Hit Rate) | Large Dataset<br>(Filter Hit Rate) | Small Dataset<br>(Top Index Hit Rate) | Medium Dataset<br>(Top Index Hit Rate) | Large Dataset<br>(Top Index Hit Rate) |
+|---------------------------|----------------|-----------------|----------------|----------------|-----------------|----------------|
+| **At IP1**                | 98.5%          | 99.6%           | 98.9%          | 96.4%          | 97.8%           | 95.4%          |
+| **Beyond IP1 (≈0.2% DB)** | 100%           | 100%            | 100%           | 100%           | 100%            | 100%           |
 
 Once the cache exceeds **Inflection Point 1**, both the Bloom filter and Top Index achieve close to 100% hit rate and negative lookups are resolved in memory. 
 
@@ -240,12 +246,12 @@ Once the cache exceeds **Inflection Point 1**, both the Bloom filter and Top Ind
 
 ### Data Block Hit Rate
 
-| CacheSize                    | Small Dataset<br>(Data Block Hit Rate) | Medium Dataset<br>(Data Block Hit Rate) | Large Dataset<br>(Data Block Hit Rate) |
-|------------------------------|---------------|----------------|---------------|
-| **Inflection Point 1 (IP1)** | 1.0%          | 0.7%           | 1.3%          |
-| **Beyond IP1 (≈0.2% DB)**    | 1.2%          | 0.9%           | 1.6%          |
-| **Inflection Point 2 (IP2)** | 1.4%          | 1.1%           | 2.4%          |
-| **Beyond IP2 (≈3% DB)**      | 3.2%          | 3.0%           | 4.3%          |
+| CacheSize                 | Small Dataset<br>(Data Block Hit Rate) | Medium Dataset<br>(Data Block Hit Rate) | Large Dataset<br>(Data Block Hit Rate) |
+|---------------------------|---------------|----------------|---------------|
+| **At IP1**                | 1.0%          | 0.7%           | 1.3%          |
+| **Beyond IP1 (≈0.2% DB)** | 1.2%          | 0.9%           | 1.6%          |
+| **At IP2**                | 1.4%          | 1.1%           | 2.4%          |
+| **Beyond IP2 (≈3% DB)**   | 3.2%          | 3.0%           | 4.3%          |
 
 Across all three phases, data block hit rate remains consistently low,
 **data block caching contributes little to the observed I/O reduction** in random-read workloads.
@@ -291,14 +297,11 @@ This confirms:
 
 ## Conclusion & Recommendations
 
-### Conclusion: Pebble Achieves Effectively O(1) Disk I/O Under Sufficient Cache
 Although the theoretical worst-case read complexity of Pebble is `O(log N)`,
 this bound is rarely observable in practice under realistic cache configurations.
 
 > With sufficient cache residency of Bloom filters (excluding LLast) and index blocks, the practical read I/O 
 > behavior of Pebble is **effectively O(1)** and consistently converges to **1–2 I/Os per Get operation**.
-
----
 
 ### Cache Configuration Recommendations
 
