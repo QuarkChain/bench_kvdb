@@ -8,16 +8,15 @@ lookups over LSM-tree based databases. These lookups are often modeled as costin
 indexes, and caching, making real-world behavior very different from this
 theoretical assumption.
 
-`bench_kvdb` is a benchmarking tool that measures the *practical disk I/O cost* of
-random KV lookups using Pebble as a reference engine. We focus on a single metric,
-**I/Os per Get**, and instrument Pebble to attribute cache hits and misses along the
-read path.
+To understand the practical I/O behavior, we create this `bench_kvdb` Repository to measure 
+the *practical disk I/O cost* of a random KV lookup using Pebble as a reference engine. We focus 
+on a single metric, **I/Os per Get**, which is the number of blocks read per Get operation.
 
-Across databases from 22 GB to 2.2 TB (200M–20B keys), we show that read I/O cost is
-largely independent of database size. With Bloom filters and top-level index blocks
-cached, random lookups incur about **2 disk I/Os per Get**; caching Bloom filters and 
-all index blocks reduces this further to about **1.0–1.3 disk I/Os per Get**, 
-exhibiting effectively constant-time I/O behavior.
+Results show that when Bloom filters and top-level index blocks are cached,
+random lookups incur about **2 disk I/Os per Get**; caching Bloom filters and
+all index blocks further reduces this to about **1.0–1.3 disk I/Os per Get**,
+exhibiting effectively constant disk I/O behavior. This behavior is largely independent 
+of database size across datasets ranging from 22 GB to 2.2 TB (200M–20B keys).
 
 ## Overview
 

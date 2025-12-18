@@ -61,7 +61,7 @@ This section describes how we validate our hypothesis that, under realistic cach
 Pebble’s practical read I/O cost is primarily governed by the cache residency of metadata
 rather than by LSM-tree depth as suggested by worst-case O(log N) models.
 We first examine Pebble’s read path to identify the concrete sources of I/O,
-then introduce two cache-driven inflection points that characterize changes in read behavior.
+then introduce two cache-driven inflection points that characterize I/O cost changes in read behavior.
 Finally, we outline the experimental setup used to observe these phases empirically
 and quantify their impact on **I/Os per Get**.
 
@@ -103,7 +103,10 @@ because most positive lookups ultimately probe LLast regardless. Pebble therefor
 
 ### Two Practical Cache Inflection Points
 
-Pebble’s read I/O behavior is driven by whether the cache can hold specific metadata components.
+From the read path described above, it is clear that a `Get` operation repeatedly consults a small and well-defined set of metadata components.
+Whether these components are resident in cache directly determines which parts of the read path incur physical I/O.
+Based on this observation and the aggregate cache footprint of each metadata class, we define two cache size thresholds
+—referred to as cache inflection points—which serve as the basis for analyzing read I/O behavior in the following sections.
 
 #### **Inflection Point 1 — `Filter + Top-Index`**
 Cache can hold:
@@ -127,7 +130,7 @@ Cache can hold:
 ### Three Cache-Driven Phases of Read I/O Behavior
 
 Based on the two cache inflection points defined above, we partition the cache
-space into three phases and describe the expected read I/O behavior in each.
+size into three phases and describe the expected read I/O behavior in each.
 
 - **Phase 1 — `Cache < Inflection Point 1`**  
   Filter and Top-Index misses are frequent → many unnecessary SST checks → **higher expected read I/O cost**.
