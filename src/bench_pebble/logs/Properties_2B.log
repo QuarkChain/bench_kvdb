@@ -1,0 +1,28 @@
+                          L0    L1    L2            L3            L4            L5            L6          TOTAL
+count                     0     0     23            101           507           1593          4881        7105
+seq num                                                                                                   
+  smallest                0     0     1997084029    1980857100    1809767243    1106241269    0           1106241269
+  largest                 0     0     2000000002    2000000009    2000000006    1999999960    0           2000000009
+size                                                                                                      
+  data                    0B    0B    62MB          475MB         3.5GB         26GB          190GB       221GB
+    blocks                0     0     17750         131980        979616        7313069       65636867    74079282
+  index                   0B    0B    407KB         3.0MB         23MB          175MB         1.5GB       1.7GB
+    blocks                0     0     135           912           6622          47008         413201      467878
+    top-level             0B    0B    2.7KB         19KB          148KB         1.1MB         9.8MB       11MB
+  filter                  0B    0B    567KB         4.2MB         32MB          236MB         2.1GB       2.3GB
+  raw-key                 0B    0B    18MB          134MB         1009MB        7.4GB         66GB        74GB
+  raw-value               0B    0B    49MB          370MB         2.7GB         20GB          182GB       205GB
+  pinned-key              0B    0B    0B            0B            0B            0B            0B          0B
+  pinned-value            0B    0B    0B            0B            0B            0B            0B          0B
+  point-del-key-size      0B    0B    0B            0B            0B            0B            0B          0B
+  point-del-value-size    0B    0B    0B            0B            0B            0B            0B          0B
+records                                                                                                   
+  set                     0     0     463K          3.5M          26M           197M          1.8G        2.0G
+  delete                  0     0     0             0             0             0             0           0
+  delete-sized            0     0     0             0             0             0             0           0
+  range-delete            0     0     0             0             0             0             0           0
+  range-key-sets          0     0     0             0             0             0             0           0
+  range-key-unsets        0     0     0             0             0             0             0           0
+  range-key-deletes       0     0     0             0             0             0             0           0
+  merge                   0     0     0             0             0             0             0           0
+  pinned                  0     0     0             0             0             0             0           0

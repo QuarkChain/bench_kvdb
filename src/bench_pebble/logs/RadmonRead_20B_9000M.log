@@ -1,0 +1,55 @@
+Threads: 64
+Total data: 20000000000 while needInit=false
+Ops: 0 write ops and 10000000 read ops
+
+Cache Statistics:
+--------------------------------------------------------
+Caller		Hits	Misses	Calls	HitRate
+github.com/cockroachdb/pebble/sstable.(*Reader).readFilter	53897795	9869	53907664	1.00
+github.com/cockroachdb/pebble/sstable.(*Reader).readIndex	62817192	34441	62851633	1.00
+github.com/cockroachdb/pebble/sstable.(*Reader).readMetaindex	0	69294	69294	0.00
+github.com/cockroachdb/pebble/sstable.(*singleLevelIterator).loadBlock	188982	10418675	10607657	0.02
+github.com/cockroachdb/pebble/sstable.(*twoLevelIterator).loadIndex	2847869	7719991	10567860	0.27
+========= Warn up done ===============
+Random read: 10000000 ops in 227880.00 ms (43882.75 ops/s)
+Filter: Hit Count 52250913; Miss Count: 1658541
+BlockCache: Hit Count 120906217; Miss Count: 17030771
+TableCache: Hit Count 62854556; Miss Count: 0
+Avg I/O per Get ≈ 1.7031
+DB State 
+      |                             |       |       |   ingested   |     moved    |    written   |       |    amp
+level | tables  size val-bl vtables | score |   in  | tables  size | tables  size | tables  size |  read |   r   w
+------+-----------------------------+-------+-------+--------------+--------------+--------------+-------+---------
+    0 |     2  4.3MB     0B       0 |  0.50 |    0B |     0     0B |     0     0B |     0     0B |    0B |   1  0.0
+    1 |    19   58MB     0B       0 |  0.91 |    0B |     0     0B |     0     0B |     0     0B |    0B |   1  0.0
+    2 |   107  505MB     0B       0 |  0.99 |    0B |     0     0B |     0     0B |     0     0B |    0B |   1  0.0
+    3 |   633  4.0GB     0B       0 |  1.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   1  0.0
+    4 |  1.8K   32GB     0B       0 |  1.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   1  0.0
+    5 |  7.4K  253GB     0B       0 |  1.00 |    0B |     0     0B |     0     0B |     0     0B |    0B |   1  0.0
+    6 |   25K  1.9TB     0B       0 |     - |    0B |     0     0B |     0     0B |     0     0B |    0B |   1  0.0
+total |   35K  2.2TB     0B       0 |     - |    0B |     0     0B |     0     0B |     0     0B |    0B |   7  0.0
+-------------------------------------------------------------------------------------------------------------------
+WAL: 1 files (0B)  in: 0B  written: 0B (0% overhead)
+Flushes: 0
+Compactions: 0  estimated debt: 62MB  in progress: 0 (0B)
+             default: 0  delete: 0  elision: 0  move: 0  read: 0  rewrite: 0  multi-level: 0
+MemTables: 1 (256KB)  zombie: 0 (0B)
+Zombie tables: 0 (0B)
+Backing tables: 0 (0B)
+Virtual tables: 0 (0B)
+Block cache: 4.0M entries (8.8GB)  hit rate: 87.2%
+Table cache: 35K entries (27MB)  hit rate: 100.0%
+Secondary cache: 0 entries (0B)  hit rate: 0.0%
+Snapshots: 0  earliest seq num: 0
+Table iters: 0
+Filter utility: 96.9%
+Ingestions: 0  as flushable: 0 (0B in 0 tables)
+
+Cache Statistics:
+--------------------------------------------------------
+Caller		Hits	Misses	Calls	HitRate
+github.com/cockroachdb/pebble/sstable.(*Reader).readFilter	107807206	9912	107817118	1.00
+github.com/cockroachdb/pebble/sstable.(*Reader).readIndex	125671607	34582	125706189	1.00
+github.com/cockroachdb/pebble/sstable.(*Reader).readMetaindex	0	69294	69294	0.00
+github.com/cockroachdb/pebble/sstable.(*singleLevelIterator).loadBlock	380719	20833288	21214007	0.02
+github.com/cockroachdb/pebble/sstable.(*twoLevelIterator).loadIndex	6798523	14335965	21134488	0.32
