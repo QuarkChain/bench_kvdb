@@ -21,7 +21,7 @@ spanning datasets from **22 GB to 2.2 TB** (**200M to 20B keys**), and find that
 - Data block caching has only a marginal effect on overall I/O under pure random-read workloads.
 
 Overall, when the cache is sufficient to hold Bloom filters (excluding LLast) and the Top-Index 
-— roughly **~0.1%–0.2% of the total database size** under blockchain-like workloads — , 
+— roughly **~0.1%–0.2% of the total database size** under blockchain-like workloads, 
 **Pebble exhibits effectively O(1) disk I/O behavior for random reads**, challenging the common 
 assumption that each KV lookup inherently costs `O(log N)` physical I/O. This has direct implications 
 for the performance modeling and design of blockchain trie databases and execution-layer storage systems.
@@ -146,7 +146,7 @@ size into three phases and describe the expected read I/O behavior in each.
 ### Experimental Setup
 
 This section describes the experimental methodology used to evaluate Pebble’s practical random-read I/O behavior 
-under blockchain-like workloads. It summarize the experimental environment, datasets, workloads,and metrics used 
+under blockchain-like workloads. It summarize the experimental environment, datasets, workloads, and metrics used 
 to measure cache residency and **I/Os per Get**, focusing on steady-state random-read behavior.
 
 #### Hardware and Software
