@@ -90,8 +90,9 @@ The paper covers:
 This benchmark requires a small instrumentation patch to **Pebble v1.1.5** to expose **per-call-site block cache hit statistics** for measurement.
 
 ### Patch Pebble
-Replace the `readBlock` implementation in: [pebble/sstable/reader.go](https://github.com/cockroachdb/pebble/blob/v1.1.5/sstable/reader.go#L519)
-with the instrumented code provided in: [src/bench_pebble/utils.go](src/bench_pebble/utils.go#L14)
+Replace the `readBlock` implementation in [`pebble/sstable/reader.go`](https://github.com/cockroachdb/pebble/blob/v1.1.5/sstable/reader.go#L519-L527)
+(which should correspond to `$GOPATH/pkg/mod/github.com/cockroachdb/pebble@v1.1.5/sstable/reader.go`
+on your machine, lines 519–527) with the instrumented code provided in [`src/bench_pebble/utils.go`](src/bench_pebble/utils.go#L14-L56).
 
 Before applying the replacement, **uncomment** the instrumentation code in
 `utils.go` (i.e., remove the leading `//` from lines 14–56), and then use the
