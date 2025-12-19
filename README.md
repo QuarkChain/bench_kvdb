@@ -48,7 +48,7 @@ This repository provides **empirical data** to measure the *actual* read I/O cos
 
 ---
 
-## Key Findings (TL;DR)
+## Key Findings
 
 Across databases from **22 GB to 2.2 TB (200M–20B keys)**:
 
@@ -91,7 +91,11 @@ This benchmark requires a small instrumentation patch to **Pebble v1.1.5** to ex
 
 ### Patch Pebble
 Replace the `readBlock` implementation in: [pebble/sstable/reader.go](https://github.com/cockroachdb/pebble/blob/v1.1.5/sstable/reader.go#L519)
-with the instrumented code provided in: [src/bench_pebble/utils.go](src/bench_pebble/utils.go#L13)
+with the instrumented code provided in: [src/bench_pebble/utils.go](src/bench_pebble/utils.go#L14)
+
+Before applying the replacement, **uncomment** the instrumentation code in
+`utils.go` (i.e., remove the leading `//` from lines 14–56), and then use the
+resulting code to replace lines 519–527 in `sstable/reader.go` of Pebble v1.1.5.
 
 The patch adds:
 - Per-call-site cache **call counts**

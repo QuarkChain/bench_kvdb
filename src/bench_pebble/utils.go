@@ -2,9 +2,10 @@ package main
 
 import (
 	"fmt"
-	"github.com/cockroachdb/pebble/sstable"
 	"sort"
 	"strings"
+
+	"github.com/cockroachdb/pebble/sstable"
 )
 
 // Replace the following code to add Cache Hits detail
