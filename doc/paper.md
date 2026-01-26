@@ -324,3 +324,36 @@ Beyond **Inflection Point 2**, further increasing cache size provides **only mar
 additional I/O reduction** under random-read workloads.
 
 ---
+
+## Q&A
+
+### Question (weiihann)
+Great analysis!
+
+Would you say that geth’s default db cache configuration (i.e. 2GB) is sufficient for the time being?
+
+### Answer
+Short answer: **yes, in practice — especially under geth’s default path-based state scheme.**
+
+The measurements in this article are intentionally based on **hash-based trie storage**, where keys are effectively **random**, representing a worst-case access pattern for LSM-based KV stores. Under this model, a **2 GB DB cache is sufficient to cover the first inflection point (Bloom filters excluding LLast + top-level index, ~1 GB)** and yields approximately **~1–2 disk I/Os per random `Get`**, as described in the post.
+
+It is important to distinguish this from **geth’s current default configuration**, which uses the **path-based state scheme** and is significantly more cache-friendly for KV reads due to better key locality.
+
+By enabling Pebble metrics (`--metrics --metrics.addr 0.0.0.0`) and adding lightweight counters at the call sites of `d.db.Get(key)` in geth (within `ethdb/pebble/pebble.go`), the following behavior was observed under during syncing:
+
+- ~5 SSTables consulted per `Get`
+- ~11.3 block fetches per `Get`
+- ~**97 % block cache hit rate**
+- **~0.34 block cache misses per `Get`**, i.e. **~0.34 disk I/Os per `Get`**
+
+This does **not contradict** the article’s conclusions: the article evaluates **hash-based storage as a baseline**, while **path-based storage shifts the effective working set downward** by clustering related keys, improving filter, index, and even data-block cache hit rates.
+
+**In summary:**
+
+- **Hash-based trie storage** (article model):  
+  2 GB DB cache → **~1–2 I/Os per random `Get`**
+- **Path-based trie storage** (geth default):  
+  2 GB DB cache → **~0.34 I/Os per `Get`**
+
+For the time being, geth’s default DB cache configuration is therefore **sufficient in practice**, especially under the default path-based state scheme.
+
