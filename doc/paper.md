@@ -346,7 +346,7 @@ By enabling Pebble metrics (`--metrics --metrics.addr 0.0.0.0`) and adding light
 - **92% ~ 97% block cache hit rate**
 - **0.3 ~ 0.9 block cache misses per `Get`**, i.e. **0.3 ~ 0.9 disk I/Os per `Get`**
 
-This does **not contradict** the article’s conclusions: the article evaluates **hash-based storage as a baseline**, while **path-based storage shifts the effective working set downward** by clustering related keys, improving filter, index, and even data-block cache hit rates.
+This does **not contradict** the article’s conclusions: the article evaluates **hash-based storage as a baseline**, while **path-based storage is significantly more cache-friendly** due to clustering related keys, improving filter, index, and even data-block cache hit rates.
 
 **In summary:**
 
