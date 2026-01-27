@@ -327,12 +327,13 @@ additional I/O reduction** under random-read workloads.
 
 ## Q&A
 
-### Question (weiihann)
+### Is geth’s default 2 GB DB cache sufficient in practice? (from weiihann)
+#### Question
 Great analysis!
 
 Would you say that geth’s default db cache configuration (i.e. 2GB) is sufficient for the time being?
 
-### Answer
+#### Answer
 Short answer: **yes, in practice — especially under geth’s default path-based state scheme.**
 
 The measurements in this article are intentionally based on **hash-based trie storage**, where keys are effectively **random**, representing a worst-case access pattern for LSM-based KV stores. Under this model, a **2 GB DB cache is sufficient to cover the first inflection point (Bloom filters excluding LLast + top-level index, ~1 GB)** and yields approximately **~1–2 disk I/Os per random `Get`**, as described in the post.
