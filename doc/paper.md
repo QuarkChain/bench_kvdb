@@ -339,12 +339,12 @@ The measurements in this article are intentionally based on **hash-based trie st
 
 It is important to distinguish this from **geth’s current default configuration**, which uses the **path-based state scheme** and is significantly more cache-friendly for KV reads due to better key locality.
 
-By enabling Pebble metrics (`--metrics --metrics.addr 0.0.0.0`) and adding lightweight counters at the call sites of `d.db.Get(key)` in geth (within `ethdb/pebble/pebble.go`), the following behavior was observed under during syncing:
+By enabling Pebble metrics (`--metrics --metrics.addr 0.0.0.0`) and adding lightweight counters at the call sites of `d.db.Get(key)` in geth (within `ethdb/pebble/pebble.go`), the following behavior was observed:
 
 - ~5 SSTables consulted per `Get`
-- ~11.3 block fetches per `Get`
-- ~**97 % block cache hit rate**
-- **~0.34 block cache misses per `Get`**, i.e. **~0.34 disk I/Os per `Get`**
+- ~11 block fetches per `Get`
+- **92% ~ 97% block cache hit rate**
+- **0.3 ~ 0.9 block cache misses per `Get`**, i.e. **0.3 ~ 0.9 disk I/Os per `Get`**
 
 This does **not contradict** the article’s conclusions: the article evaluates **hash-based storage as a baseline**, while **path-based storage shifts the effective working set downward** by clustering related keys, improving filter, index, and even data-block cache hit rates.
 
@@ -353,7 +353,7 @@ This does **not contradict** the article’s conclusions: the article evaluates 
 - **Hash-based trie storage** (article model):  
   2 GB DB cache → **~1–2 I/Os per random `Get`**
 - **Path-based trie storage** (geth default):  
-  2 GB DB cache → **~0.34 I/Os per `Get`**
+  2 GB DB cache → **0.3 ~ 0.9 I/Os per `Get`**
 
 For the time being, geth’s default DB cache configuration is therefore **sufficient in practice**, especially under the default path-based state scheme.
 
